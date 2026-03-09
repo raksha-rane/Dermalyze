@@ -1,8 +1,4 @@
-"""FastAPI server that exposes skin_lesion_classifier inference to the frontend.
-
-Run from `skin_lesion_classifier/`:
-    uvicorn src.api_server:app --reload --host 0.0.0.0 --port 8000
-"""
+"""FastAPI server for standalone skin lesion inference service."""
 
 from __future__ import annotations
 
@@ -14,9 +10,11 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from src.inference import SkinLesionPredictor
+try:
+    from .predictor import SkinLesionPredictor
+except ImportError:
+    from predictor import SkinLesionPredictor
 
-# Keep IDs aligned with frontend class metadata.
 CLASS_IDS: List[str] = ["akiec", "bcc", "bkl", "df", "mel", "nv", "vasc"]
 CLASS_NAMES: Dict[str, str] = {
     "akiec": "Actinic Keratosis",
@@ -28,9 +26,7 @@ CLASS_NAMES: Dict[str, str] = {
     "vasc": "Vascular Lesion",
 }
 
-_DEFAULT_CHECKPOINT = (
-    Path(__file__).resolve().parents[1] / "outputs" / "run_best_yet" / "checkpoint_best.pt"
-)
+_DEFAULT_CHECKPOINT = Path(__file__).resolve().parent / "model" / "checkpoint_best.pt"
 CHECKPOINT_PATH = Path(os.environ.get("MODEL_CHECKPOINT", str(_DEFAULT_CHECKPOINT)))
 IMAGE_SIZE = int(os.environ.get("MODEL_IMAGE_SIZE", "224"))
 USE_TTA = os.environ.get("USE_TTA", "false").lower() == "true"
@@ -45,7 +41,7 @@ ORIGINS = [o.strip() for o in _raw_origins.split(",") if o.strip()]
 
 app = FastAPI(
     title="Dermalyze Inference API",
-    description="Inference API backed by skin_lesion_classifier",
+    description="Standalone inference API decoupled from training project",
     version="1.0.0",
 )
 
@@ -79,7 +75,10 @@ def _get_predictor() -> SkinLesionPredictor:
                 "Model checkpoint not found at "
                 f"'{CHECKPOINT_PATH}'. Set MODEL_CHECKPOINT to a valid .pt file."
             )
-        _predictor = SkinLesionPredictor(checkpoint_path=CHECKPOINT_PATH, image_size=IMAGE_SIZE)
+        _predictor = SkinLesionPredictor(
+            checkpoint_path=CHECKPOINT_PATH,
+            image_size=IMAGE_SIZE,
+        )
     return _predictor
 
 
