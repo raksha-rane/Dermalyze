@@ -98,7 +98,8 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ onBack, onViewDetails }) 
 
       if (error) throw error;
       const rows = data ?? [];
-      setHistoryItems((prev) => [...prev, ...(await mapRows(rows))]);
+      const mappedRows = await mapRows(rows);
+      setHistoryItems((prev) => [...prev, ...mappedRows]);
       setHasMore(rows.length === PAGE_SIZE);
       setPage(nextPage);
     } catch {
