@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import io
+import logging
 import os
 from pathlib import Path
 from typing import Dict, List
@@ -9,6 +11,17 @@ from typing import Dict, List
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
+
+try:
+    from dotenv import load_dotenv
+
+    _env_path = Path(__file__).parent / ".env.local"
+    _loaded = load_dotenv(_env_path, override=True)
+    print(f"[dotenv] path={_env_path} loaded={_loaded}")
+except ImportError:
+    pass
 
 try:
     from .predictor import SkinLesionPredictor
@@ -45,6 +58,10 @@ IMAGE_SIZE = int(os.environ.get("MODEL_IMAGE_SIZE", "224"))
 USE_TTA = os.environ.get("USE_TTA", "false").lower() == "true"
 TTA_MODE = os.environ.get("TTA_MODE", "medium")
 TTA_AGGREGATION = os.environ.get("TTA_AGGREGATION", "geometric_mean")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
+print(
+    f"[config] GEMINI_API_KEY: {'SET' if GEMINI_API_KEY else 'NOT SET'} ({len(GEMINI_API_KEY)} chars)"
+)
 
 _raw_origins = os.environ.get(
     "CORS_ORIGINS",
@@ -65,6 +82,16 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+async def _startup_log() -> None:
+    if GEMINI_API_KEY:
+        logger.info(
+            "Gemini validation: ENABLED (key loaded, %d chars)", len(GEMINI_API_KEY)
+        )
+    else:
+        logger.warning("Gemini validation: DISABLED — GEMINI_API_KEY not set")
 
 
 class ClassResult(BaseModel):
@@ -108,6 +135,57 @@ def _to_frontend_response(probabilities: Dict[str, float]) -> List[ClassResult]:
     return results
 
 
+async def _validate_dermatoscopic(
+    image_bytes: bytes, mime_type: str = "image/jpeg"
+) -> None:
+    """Raise HTTPException(422) if the image is not a dermatoscopic image.
+
+    Uses Gemini Flash to perform a binary yes/no check. Skips validation
+    when GEMINI_API_KEY is not configured. Returns 503 if Gemini is
+    unavailable.
+    """
+    if not GEMINI_API_KEY:
+        return
+
+    try:
+        from google import genai
+        from google.genai import types
+
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        img = types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
+
+        response = client.models.generate_content(
+            model="gemini-3.1-flash-lite-preview",
+            contents=[
+                img,
+                (
+                    "Is this a dermatoscopic (dermoscopy) image of a skin lesion? "
+                    "Dermoscopy images are close-up photographs of skin taken with a "
+                    "dermatoscope, showing detailed skin surface structures under "
+                    "magnification — including hair follicles, blood vessels, and "
+                    "pigmentation patterns. Answer with ONLY 'yes' or 'no'."
+                ),
+            ],
+        )
+
+        if not response.text.strip().lower().startswith("yes"):
+            logger.info("Gemini rejected image: %s", response.text.strip())
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "The uploaded image does not qualify as a dermatoscopic image. Please upload another."
+                ),
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Gemini validation error")
+        raise HTTPException(
+            status_code=503,
+            detail="Image validation is temporarily unavailable. Please try again later.",
+        )
+
+
 @app.get("/", tags=["Health"])
 def health() -> dict:
     return {
@@ -128,6 +206,10 @@ async def classify_image(file: UploadFile = File(...)) -> ClassifyResponse:
     image_bytes = await file.read()
     if len(image_bytes) > 20 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="Image exceeds 20 MB limit.")
+
+    await _validate_dermatoscopic(
+        image_bytes, mime_type=file.content_type or "image/jpeg"
+    )
 
     try:
         predictor = _get_predictor()

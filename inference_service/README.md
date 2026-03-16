@@ -51,6 +51,7 @@ API docs: **http://localhost:8000/docs**
 - `TTA_MODE` (`light` | `medium` | `full`, default: `medium`)
 - `TTA_AGGREGATION` (`mean` | `geometric_mean` | `max`, default: `geometric_mean`)
 - `CORS_ORIGINS` (comma-separated frontend origins)
+- `GEMINI_API_KEY` (optional — enables Gemini-based validation that rejects non-dermatoscopic images before inference)
 
 ## Frontend Contract
 
