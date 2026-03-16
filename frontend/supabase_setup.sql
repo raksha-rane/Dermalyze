@@ -62,6 +62,15 @@ create policy "Users can read own images"
     and (storage.foldername(name))[1] = auth.uid()::text
   );
 
+-- Allow authenticated users to delete their own images
+create policy "Users can delete own images"
+  on storage.objects for delete
+  to authenticated
+  using (
+    bucket_id = 'analysis-images'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
 
 -- ── 4. Dashboard stats RPC ───────────────────────────────────────────────────
 -- Returns aggregated stats for the current user in a single round-trip.
