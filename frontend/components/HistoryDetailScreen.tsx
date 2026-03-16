@@ -37,7 +37,7 @@ const HistoryDetailScreen: React.FC<HistoryDetailScreenProps> = ({ item, onBack 
   const classes = item.allScores ?? null;
 
   const info = classInfoMap[item.classId];
-  const caseId = `#ANL-${item.id}00${item.id}`;
+  const caseId = `DRM-${item.id.slice(0, 8).toUpperCase()}`;
 
   /* Skeleton loading state (Doherty Threshold) */
   if (loading) {

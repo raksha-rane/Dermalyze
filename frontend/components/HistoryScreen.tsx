@@ -17,13 +17,18 @@ const PAGE_SIZE = 20;
 const HistoryScreen: React.FC<HistoryScreenProps> = ({ onBack, onViewDetails }) => {
   const [historyItems, setHistoryItems] = useState<AnalysisHistoryItem[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
-  const [loadingMore,   setLoadingMore]   = useState(false);
-  const [historyError,  setHistoryError]  = useState<string | null>(null);
-  const [hasMore,       setHasMore]       = useState(false);
-  const [page,          setPage]          = useState(0);
+  const [loadingMore,    setLoadingMore]    = useState(false);
+  const [historyError,   setHistoryError]   = useState<string | null>(null);
+  const [hasMore,        setHasMore]        = useState(false);
+  const [page,           setPage]           = useState(0);
+
+  // Selection / deletion state
+  const [selectMode,   setSelectMode]   = useState(false);
+  const [selected,     setSelected]     = useState<Set<string>>(new Set());
+  const [confirmModal, setConfirmModal] = useState<'selected' | 'all' | null>(null);
+  const [deleting,     setDeleting]     = useState(false);
 
   const mapRows = async (data: Record<string, unknown>[]): Promise<AnalysisHistoryItem[]> => {
-    // Generate signed URLs in one batched request for rows that have an image path stored
     const paths = data
       .map((row) => row.image_url as string | null)
       .filter((p): p is string => !!p && !p.startsWith('http'));
@@ -32,7 +37,7 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ onBack, onViewDetails }) 
     if (paths.length > 0) {
       const { data: signed } = await supabase.storage
         .from('analysis-images')
-        .createSignedUrls(paths, 60 * 60 * 24); // 24-hour TTL
+        .createSignedUrls(paths, 60 * 60 * 24);
       if (signed) {
         for (const entry of signed) {
           if (entry.signedUrl) signedUrlMap[entry.path] = entry.signedUrl;
@@ -42,7 +47,6 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ onBack, onViewDetails }) 
 
     return data.map((row) => {
       const rawUrl = row.image_url as string | null;
-      // Support legacy rows that stored full URLs directly
       const imageUrl = rawUrl
         ? (rawUrl.startsWith('http') ? rawUrl : (signedUrlMap[rawUrl] ?? undefined))
         : undefined;
@@ -58,12 +62,12 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ onBack, onViewDetails }) 
         className:  row.predicted_class_name as string,
         confidence: row.confidence as number,
         imageUrl,
+        imagePath: (rawUrl && !rawUrl.startsWith('http')) ? rawUrl : undefined,
         allScores:  (row.all_scores as AnalysisHistoryItem['allScores']) ?? undefined,
       };
     });
   };
 
-  // Initial load
   useEffect(() => {
     const fetchHistory = async () => {
       try {
@@ -109,12 +113,81 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ onBack, onViewDetails }) 
     }
   };
 
+  // ── Selection helpers ──────────────────────────────────────────────────────
+  const toggleSelectMode = () => {
+    setSelectMode(prev => !prev);
+    setSelected(new Set());
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const allSelected = historyItems.length > 0 && historyItems.every(i => selected.has(i.id));
+
+  const toggleSelectAll = () => {
+    setSelected(allSelected ? new Set() : new Set(historyItems.map(i => i.id)));
+  };
+
+  // ── Delete handlers ────────────────────────────────────────────────────────
+  const handleDeleteSelected = async () => {
+    setDeleting(true);
+    const ids = [...selected];
+
+    const paths = ids
+      .map(id => historyItems.find(i => i.id === id)?.imagePath)
+      .filter((p): p is string => !!p);
+    if (paths.length > 0)
+      await supabase.storage.from('analysis-images').remove(paths);
+
+    const { error } = await supabase.from('analyses').delete().in('id', ids);
+    if (!error) {
+      setHistoryItems(prev => prev.filter(i => !ids.includes(i.id)));
+      setSelected(new Set());
+      setSelectMode(false);
+    }
+    setDeleting(false);
+    setConfirmModal(null);
+  };
+
+  const handleClearAll = async () => {
+    setDeleting(true);
+
+    const { data: allRows } = await supabase
+      .from('analyses')
+      .select('image_url')
+      .not('image_url', 'is', null);
+    const paths = (allRows ?? [])
+      .map(r => r.image_url as string)
+      .filter(p => !p.startsWith('http'));
+    if (paths.length > 0)
+      await supabase.storage.from('analysis-images').remove(paths);
+
+    const { error } = await supabase.from('analyses').delete().not('id', 'is', null);
+    if (!error) {
+      setHistoryItems([]);
+      setSelected(new Set());
+      setSelectMode(false);
+      setHasMore(false);
+    }
+    setDeleting(false);
+    setConfirmModal(null);
+  };
+
+  const hasItems = historyItems.length > 0;
+
   return (
     <div className="flex-1 flex flex-col bg-slate-50 text-slate-900 pb-12">
       <main className="max-w-4xl mx-auto w-full px-4 sm:px-6 py-8 flex flex-col gap-8">
-        <div className="flex items-center justify-between">
+
+        {/* Header */}
+        <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <button 
+            <button
               onClick={onBack}
               className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400 hover:text-slate-600"
             >
@@ -124,7 +197,31 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ onBack, onViewDetails }) 
             </button>
             <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Past Analyses</h1>
           </div>
-          <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2.5 py-1 rounded uppercase tracking-wider">System Records</span>
+
+          {/* Action buttons — only show when records exist */}
+          {!loadingHistory && hasItems && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={toggleSelectMode}
+                className={[
+                  'text-xs font-bold px-3 py-1.5 rounded-lg border transition-colors',
+                  selectMode
+                    ? 'bg-slate-800 text-white border-slate-800'
+                    : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:text-slate-800',
+                ].join(' ')}
+              >
+                {selectMode ? 'Cancel' : 'Select'}
+              </button>
+              {!selectMode && (
+                <button
+                  onClick={() => setConfirmModal('all')}
+                  className="text-xs font-bold px-3 py-1.5 rounded-lg border border-red-200 text-red-500 bg-white hover:bg-red-50 hover:border-red-300 transition-colors"
+                >
+                  Clear History
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         <section className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
@@ -145,10 +242,46 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ onBack, onViewDetails }) 
               <p className="text-xs text-slate-300 mt-1">Run your first classification to see it here.</p>
             </div>
           ) : (<>
+
+          {/* Selection toolbar */}
+          {selectMode && (
+            <div className="flex items-center justify-between px-4 sm:px-6 py-3 border-b border-slate-200 bg-slate-50">
+              <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={toggleSelectAll}
+                  className="w-4 h-4 rounded border-slate-300 text-teal-600 accent-teal-600 cursor-pointer"
+                />
+                <span className="text-xs font-semibold text-slate-600">
+                  {allSelected ? 'Deselect all' : 'Select all'}
+                </span>
+              </label>
+              <button
+                disabled={selected.size === 0}
+                onClick={() => setConfirmModal('selected')}
+                className="text-xs font-bold px-3 py-1.5 rounded-lg bg-red-500 text-white hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                Delete {selected.size > 0 ? `${selected.size} selected` : 'selected'}
+              </button>
+            </div>
+          )}
+
           {/* Mobile card layout (< md) */}
           <ul className="divide-y divide-slate-100 md:hidden">
             {historyItems.map((item) => (
-              <li key={item.id} className="flex items-center gap-4 px-4 py-4">
+              <li
+                key={item.id}
+                className={['flex items-center gap-4 px-4 py-4 transition-colors', selectMode && selected.has(item.id) ? 'bg-red-50/60' : ''].join(' ')}
+              >
+                {selectMode && (
+                  <input
+                    type="checkbox"
+                    checked={selected.has(item.id)}
+                    onChange={() => toggleSelect(item.id)}
+                    className="w-4 h-4 rounded border-slate-300 accent-teal-600 cursor-pointer shrink-0"
+                  />
+                )}
                 <div className="w-12 h-12 rounded-lg bg-slate-100 flex items-center justify-center text-slate-300 border border-slate-200 overflow-hidden shrink-0">
                   {item.imageUrl ? (
                     <img src={item.imageUrl} alt="Lesion thumbnail" className="w-full h-full object-cover" />
@@ -166,15 +299,17 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ onBack, onViewDetails }) 
                   <p className="text-xs text-slate-500 truncate">{item.className}</p>
                   <p className="text-xs text-slate-400 mt-0.5">{item.date} · {item.time}</p>
                 </div>
-                <button
-                  onClick={() => onViewDetails(item)}
-                  className="shrink-0 text-teal-600 hover:text-teal-700 p-2 rounded-full hover:bg-teal-50 transition-colors"
-                  title="View Details"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </button>
+                {!selectMode && (
+                  <button
+                    onClick={() => onViewDetails(item)}
+                    className="shrink-0 text-teal-600 hover:text-teal-700 p-2 rounded-full hover:bg-teal-50 transition-colors"
+                    title="View Details"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                )}
               </li>
             ))}
           </ul>
@@ -184,6 +319,7 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ onBack, onViewDetails }) 
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200">
+                  {selectMode && <th className="pl-6 py-4 w-10" />}
                   <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Lesion Context</th>
                   <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Date / Time</th>
                   <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Predicted Class</th>
@@ -192,17 +328,30 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ onBack, onViewDetails }) 
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {historyItems.map((item) => (
-                  <tr key={item.id} className="hover:bg-slate-50/50 transition-colors group">
+                  <tr
+                    key={item.id}
+                    className={['hover:bg-slate-50/50 transition-colors group', selectMode && selected.has(item.id) ? 'bg-red-50/60' : ''].join(' ')}
+                  >
+                    {selectMode && (
+                      <td className="pl-6 py-4 w-10">
+                        <input
+                          type="checkbox"
+                          checked={selected.has(item.id)}
+                          onChange={() => toggleSelect(item.id)}
+                          className="w-4 h-4 rounded border-slate-300 accent-teal-600 cursor-pointer"
+                        />
+                      </td>
+                    )}
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-4">
                         <div className="w-12 h-12 rounded-lg bg-slate-100 flex items-center justify-center text-slate-300 border border-slate-200 overflow-hidden relative">
-                           {item.imageUrl ? (
-                             <img src={item.imageUrl} alt="Lesion thumbnail" className="w-full h-full object-cover" />
-                           ) : (
-                             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          {item.imageUrl ? (
+                            <img src={item.imageUrl} alt="Lesion thumbnail" className="w-full h-full object-cover" />
+                          ) : (
+                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                             </svg>
-                           )}
+                          )}
                         </div>
                         <div>
                           <div className="text-xs font-bold text-slate-400 uppercase tracking-tighter">Case Reference</div>
@@ -226,15 +375,17 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ onBack, onViewDetails }) 
                       </div>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <button 
-                        onClick={() => onViewDetails(item)}
-                        className="text-teal-600 hover:text-teal-700 text-sm font-bold uppercase tracking-widest flex items-center gap-1 justify-end ml-auto group-hover:translate-x-1 transition-transform"
-                      >
-                        View Details
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                        </svg>
-                      </button>
+                      {!selectMode && (
+                        <button
+                          onClick={() => onViewDetails(item)}
+                          className="text-teal-600 hover:text-teal-700 text-sm font-bold uppercase tracking-widest flex items-center gap-1 justify-end ml-auto group-hover:translate-x-1 transition-transform"
+                        >
+                          View Details
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -273,16 +424,16 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ onBack, onViewDetails }) 
         </section>
 
         <div className="p-6 bg-blue-50/30 rounded-2xl border border-blue-100">
-           <div className="flex gap-3">
-             <div className="text-blue-500">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-             </div>
-             <p className="text-xs text-blue-700 font-medium leading-relaxed">
-               Analysis history is fetched from your account, ordered newest first. Records are persisted across devices and sessions.
-             </p>
-           </div>
+          <div className="flex gap-3">
+            <div className="text-blue-500">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <p className="text-xs text-blue-700 font-medium leading-relaxed">
+              Analysis history is fetched from your account, ordered newest first. Records are persisted across devices and sessions.
+            </p>
+          </div>
         </div>
 
         <div className="flex justify-center">
@@ -299,6 +450,62 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ onBack, onViewDetails }) 
           Clinical Support Tool. System architecture v2.0.4-pro
         </p>
       </footer>
+
+      {/* ── Confirmation modal ─────────────────────────────────────────────── */}
+      {confirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => !deleting && setConfirmModal(null)}
+          />
+          {/* Dialog */}
+          <div className="relative bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 flex flex-col gap-5">
+            {/* Icon */}
+            <div className="flex items-center justify-center w-12 h-12 rounded-full bg-red-50 mx-auto">
+              <svg className="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </div>
+            {/* Text */}
+            <div className="text-center">
+              <h2 className="text-base font-bold text-slate-900 mb-1">
+                {confirmModal === 'all' ? 'Clear all history?' : `Delete ${selected.size} record${selected.size !== 1 ? 's' : ''}?`}
+              </h2>
+              <p className="text-sm text-slate-500 leading-relaxed">
+                {confirmModal === 'all'
+                  ? 'This will permanently delete all your analysis records. This action cannot be undone.'
+                  : `This will permanently delete the selected record${selected.size !== 1 ? 's' : ''}. This action cannot be undone.`}
+              </p>
+            </div>
+            {/* Actions */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmModal(null)}
+                disabled={deleting}
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmModal === 'all' ? handleClearAll : handleDeleteSelected}
+                disabled={deleting}
+                className="flex-1 py-2.5 rounded-xl bg-red-500 text-sm font-bold text-white hover:bg-red-600 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+              >
+                {deleting ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    Deleting…
+                  </>
+                ) : 'Delete permanently'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

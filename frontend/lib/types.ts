@@ -12,5 +12,6 @@ export interface AnalysisHistoryItem {
   className: string;
   confidence: number;
   imageUrl?: string;
+  imagePath?: string;
   allScores?: ClassResult[];
 }

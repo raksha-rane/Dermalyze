@@ -96,6 +96,14 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({
         const rpc  = rpcData as RpcResult;
         const last = (!lastErr && lastRows && lastRows.length > 0) ? lastRows[0] : null;
 
+        let resolvedImageUrl: string | null = last?.image_url ?? null;
+        if (resolvedImageUrl && !resolvedImageUrl.startsWith('http')) {
+          const { data: signed } = await supabase.storage
+            .from('analysis-images')
+            .createSignedUrl(resolvedImageUrl, 60 * 60 * 24);
+          resolvedImageUrl = signed?.signedUrl ?? null;
+        }
+
         const lastAnalysis = last ? {
           className:  SHORT_CLASS_NAMES[last.predicted_class_id] ?? last.predicted_class_name,
           classId:    last.predicted_class_id,
@@ -103,7 +111,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({
           date: new Date(last.created_at).toLocaleDateString('en-GB', {
             day: '2-digit', month: 'short', year: 'numeric',
           }),
-          imageUrl: last.image_url ?? null,
+          imageUrl: resolvedImageUrl,
         } : null;
 
         const classCounts = (rpc.class_counts ?? []).map(c => ({
