@@ -9,9 +9,11 @@ import os
 from pathlib import Path
 from typing import Dict, List
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
+import jwt
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +76,13 @@ print(
     f"[config] GEMINI_API_KEY: {'SET' if GEMINI_API_KEY else 'NOT SET'} ({len(GEMINI_API_KEY)} chars)"
 )
 
+SUPABASE_JWT_SECRET = os.environ.get("SUPABASE_JWT_SECRET", "").strip()
+if not SUPABASE_JWT_SECRET:
+    logger.warning("SUPABASE_JWT_SECRET not set — /classify endpoint will reject all requests")
+print(
+    f"[config] SUPABASE_JWT_SECRET: {'SET' if SUPABASE_JWT_SECRET else 'NOT SET'} ({len(SUPABASE_JWT_SECRET)} chars)"
+)
+
 _raw_origins = os.environ.get(
     "CORS_ORIGINS",
     "",
@@ -101,6 +110,50 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+security = HTTPBearer()
+
+
+def verify_jwt_token(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
+    """Verify Supabase JWT token and return decoded payload.
+
+    Raises HTTPException(401) if token is invalid, expired, or missing.
+    """
+    if not SUPABASE_JWT_SECRET:
+        raise HTTPException(
+            status_code=503,
+            detail="Authentication service is not configured. Please contact support.",
+        )
+
+    token = credentials.credentials
+    try:
+        # Verify and decode the JWT token
+        # Supabase uses HS256 algorithm by default
+        payload = jwt.decode(
+            token,
+            SUPABASE_JWT_SECRET,
+            algorithms=["HS256"],
+            options={"verify_aud": False}  # Supabase doesn't use aud claim
+        )
+
+        # Check if token has required claims
+        if "sub" not in payload:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid token: missing user identifier.",
+            )
+
+        return payload
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(
+            status_code=401,
+            detail="Token has expired. Please log in again.",
+        )
+    except jwt.InvalidTokenError as e:
+        raise HTTPException(
+            status_code=401,
+            detail=f"Invalid authentication token: {str(e)}",
+        )
 
 
 @app.on_event("startup")
@@ -221,7 +274,10 @@ def health() -> dict:
 
 
 @app.post("/classify", response_model=ClassifyResponse, tags=["Inference"])
-async def classify_image(file: UploadFile = File(...)) -> ClassifyResponse:
+async def classify_image(
+    file: UploadFile = File(...),
+    user: dict = Depends(verify_jwt_token)
+) -> ClassifyResponse:
     if file.content_type not in ("image/jpeg", "image/png", "image/webp"):
         raise HTTPException(
             status_code=415,
