@@ -16,6 +16,7 @@ from .efficientnet_b6 import SkinLesionClassifierB6, create_model_b6
 from .efficientnet_b7 import SkinLesionClassifierB7, create_model_b7
 from .resnest_101 import SkinLesionResNeSt101Classifier, create_model_resnest101
 from .seresnext_101 import SkinLesionSEResNeXt101Classifier, create_model_seresnext101
+from .multi_input import MultiInputClassifier, create_multi_input_model
 
 __all__ = [
     "SkinLesionClassifier",
@@ -41,4 +42,6 @@ __all__ = [
     "create_model_resnest101",
     "SkinLesionSEResNeXt101Classifier",
     "create_model_seresnext101",
+    "MultiInputClassifier",
+    "create_multi_input_model",
 ]
