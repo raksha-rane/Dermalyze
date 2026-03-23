@@ -79,13 +79,21 @@ const HistoryDetailScreen: React.FC<HistoryDetailScreenProps> = ({ item, onBack 
         .eq('user_id', user.id)
         .select('id');
       if (error) throw error;
-      if (!updated || updated.length === 0) throw new Error('no_rows');
+      if (!updated || updated.length === 0) {
+        // No rows updated - record may have been deleted or doesn't belong to user
+        setNoteError('This analysis record no longer exists. It may have been deleted.');
+        return;
+      }
       setNoteText(trimmed ?? '');
       setEditing(false);
       setNoteSaved(true);
       setTimeout(() => setNoteSaved(false), 3000);
-    } catch {
-      setNoteError('Could not save note. Please try again.');
+    } catch (err: unknown) {
+      // Differentiate between database errors and other errors
+      const errorMessage = err instanceof Error && err.message === 'Not authenticated'
+        ? 'Authentication expired. Please log in again.'
+        : 'Could not save note. Please check your connection and try again.';
+      setNoteError(errorMessage);
     } finally {
       setSavingNote(false);
     }

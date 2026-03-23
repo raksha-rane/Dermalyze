@@ -9,11 +9,15 @@ import os
 from pathlib import Path
 from typing import Dict, List
 
-from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 import jwt
+from jwt import PyJWKClient
 
 logger = logging.getLogger(__name__)
 
@@ -23,8 +27,7 @@ if _dotenv_spec is not None:
     load_dotenv = getattr(dotenv, "load_dotenv", None)
     if callable(load_dotenv):
         _env_path = Path(__file__).parent / ".env.local"
-        _loaded = load_dotenv(_env_path, override=True)
-        print(f"[dotenv] path={_env_path} loaded={_loaded}")
+        load_dotenv(_env_path, override=True)
 
 try:
     from .predictor import SkinLesionPredictor
@@ -73,9 +76,29 @@ TTA_MODE = os.environ.get("TTA_MODE", "medium")
 TTA_AGGREGATION = os.environ.get("TTA_AGGREGATION", "geometric_mean")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "").strip()
 SUPABASE_JWT_SECRET = os.environ.get("SUPABASE_JWT_SECRET", "").strip()
-if not SUPABASE_JWT_SECRET:
-    logger.warning("SUPABASE_JWT_SECRET not set — /classify endpoint will reject all requests")
+
+print(f"[config] SUPABASE_URL: {'SET - ' + SUPABASE_URL if SUPABASE_URL else 'NOT SET'}")
+print(f"[config] SUPABASE_JWT_SECRET: {'SET' if SUPABASE_JWT_SECRET else 'NOT SET'}")
+
+# Initialize JWKS client for ES256 token verification
+_jwks_client = None
+if SUPABASE_URL:
+    _jwks_url = f"{SUPABASE_URL}/auth/v1/.well-known/jwks.json"
+    try:
+        _jwks_client = PyJWKClient(_jwks_url, cache_keys=True, max_cached_keys=16)
+        print(f"[config] JWKS client initialized: {_jwks_url}")
+        logger.info(f"JWKS client initialized: {_jwks_url}")
+    except Exception as e:
+        print(f"[config] ERROR initializing JWKS client: {e}")
+        logger.error(f"Failed to initialize JWKS client: {e}")
+elif SUPABASE_JWT_SECRET:
+    print("[config] Using legacy HS256 JWT verification (SUPABASE_URL not set)")
+    logger.info("Using legacy HS256 JWT verification (SUPABASE_URL not set)")
+else:
+    print("[config] WARNING: Neither SUPABASE_URL nor SUPABASE_JWT_SECRET set")
+    logger.warning("Neither SUPABASE_URL nor SUPABASE_JWT_SECRET set — /classify endpoint will reject all requests")
 
 _raw_origins = os.environ.get(
     "CORS_ORIGINS",
@@ -90,11 +113,16 @@ CORS_ORIGIN_REGEX = os.environ.get(
 print(f"[config] CORS_ORIGINS: {', '.join(ORIGINS)}")
 print(f"[config] CORS_ORIGIN_REGEX: {CORS_ORIGIN_REGEX}")
 
+limiter = Limiter(key_func=get_remote_address)
+
 app = FastAPI(
     title="Dermalyze Inference API",
     description="Standalone inference API decoupled from training project",
     version="1.0.0",
 )
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,
@@ -114,7 +142,7 @@ def verify_jwt_token(credentials: HTTPAuthorizationCredentials | None = Depends(
     Raises HTTPException(401) if token is invalid, expired, or missing.
     Raises HTTPException(503) if authentication service is not configured.
     """
-    if not SUPABASE_JWT_SECRET:
+    if not _jwks_client and not SUPABASE_JWT_SECRET:
         raise HTTPException(
             status_code=503,
             detail="Authentication service is not configured. Please contact support.",
@@ -128,14 +156,45 @@ def verify_jwt_token(credentials: HTTPAuthorizationCredentials | None = Depends(
 
     token = credentials.credentials
     try:
-        # Verify and decode the JWT token
-        # Supabase uses HS256 algorithm by default
-        payload = jwt.decode(
-            token,
-            SUPABASE_JWT_SECRET,
-            algorithms=["HS256"],
-            options={"verify_aud": False}  # Supabase doesn't use aud claim
-        )
+        # Try JWKS-based verification first (ES256, RS256)
+        if _jwks_client:
+            try:
+                # Get signing key from JWKS
+                signing_key = _jwks_client.get_signing_key_from_jwt(token)
+                logger.debug(f"Got signing key: {type(signing_key.key)}")
+                payload = jwt.decode(
+                    token,
+                    signing_key.key,
+                    algorithms=["ES256", "RS256", "HS256"],
+                    options={"verify_aud": False}
+                )
+                logger.debug("JWKS verification successful")
+            except Exception as jwks_error:
+                # Fall back to legacy HS256 if JWKS fails and secret is available
+                logger.warning(f"JWKS verification failed: {type(jwks_error).__name__}: {jwks_error}")
+                if SUPABASE_JWT_SECRET:
+                    logger.debug("Trying legacy HS256 fallback")
+                    payload = jwt.decode(
+                        token,
+                        SUPABASE_JWT_SECRET,
+                        algorithms=["HS256", "HS512"],
+                        options={"verify_aud": False}
+                    )
+                else:
+                    raise
+        # Legacy HS256 verification (when SUPABASE_URL not set)
+        elif SUPABASE_JWT_SECRET:
+            payload = jwt.decode(
+                token,
+                SUPABASE_JWT_SECRET,
+                algorithms=["HS256", "HS512"],
+                options={"verify_aud": False}
+            )
+        else:
+            raise HTTPException(
+                status_code=503,
+                detail="Authentication service is not configured.",
+            )
 
         # Check if token has required claims
         if "sub" not in payload:
@@ -213,6 +272,57 @@ def _to_frontend_response(probabilities: Dict[str, float]) -> List[ClassResult]:
     return results
 
 
+def _validate_magic_bytes(image_bytes: bytes, declared_content_type: str) -> None:
+    """Validate file magic bytes match declared content type.
+
+    Raises HTTPException(415) if magic bytes don't match expected image format.
+    """
+    if len(image_bytes) < 12:
+        raise HTTPException(
+            status_code=415,
+            detail="File is too small to be a valid image.",
+        )
+
+    # Check magic bytes for common image formats
+    magic_signatures = {
+        b'\xff\xd8\xff': 'image/jpeg',  # JPEG
+        b'\x89PNG\r\n\x1a\n': 'image/png',  # PNG
+        b'RIFF': 'image/webp',  # WebP (needs additional check)
+    }
+
+    detected_type = None
+    for signature, mime_type in magic_signatures.items():
+        if image_bytes.startswith(signature):
+            # For WebP, need to verify the WEBP string at position 8
+            if mime_type == 'image/webp':
+                if len(image_bytes) >= 12 and image_bytes[8:12] == b'WEBP':
+                    detected_type = mime_type
+                    break
+            else:
+                detected_type = mime_type
+                break
+
+    if not detected_type:
+        raise HTTPException(
+            status_code=415,
+            detail="File format not recognized. Please upload a valid JPEG, PNG, or WebP image.",
+        )
+
+    # Verify detected type matches declared content type
+    # Normalize for comparison (both jpeg and jpg are acceptable)
+    normalized_declared = declared_content_type.lower()
+    normalized_detected = detected_type.lower()
+
+    if normalized_declared != normalized_detected:
+        # Special case: image/jpg is often used but should be image/jpeg
+        if not (normalized_declared in ('image/jpg', 'image/jpeg') and
+                normalized_detected in ('image/jpg', 'image/jpeg')):
+            raise HTTPException(
+                status_code=415,
+                detail=f"File content ({normalized_detected}) does not match declared type ({normalized_declared}).",
+            )
+
+
 async def _validate_dermatoscopic(
     image_bytes: bytes, mime_type: str = "image/jpeg"
 ) -> None:
@@ -266,15 +376,13 @@ async def _validate_dermatoscopic(
 
 @app.get("/", tags=["Health"])
 def health() -> dict:
-    return {
-        "status": "ok",
-        "model_loaded": _predictor is not None,
-        "use_tta": USE_TTA,
-    }
+    return {"status": "ok"}
 
 
 @app.post("/classify", response_model=ClassifyResponse, tags=["Inference"])
+@limiter.limit("20/minute")
 async def classify_image(
+    request: Request,
     file: UploadFile = File(...),
     user: dict = Depends(verify_jwt_token)
 ) -> ClassifyResponse:
@@ -285,8 +393,11 @@ async def classify_image(
         )
 
     image_bytes = await file.read()
-    if len(image_bytes) > 20 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="Image exceeds 20 MB limit.")
+    if len(image_bytes) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Image exceeds 10 MB limit.")
+
+    # Validate file magic bytes match declared content type
+    _validate_magic_bytes(image_bytes, file.content_type or "application/octet-stream")
 
     await _validate_dermatoscopic(
         image_bytes, mime_type=file.content_type or "image/jpeg"

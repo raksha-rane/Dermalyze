@@ -52,7 +52,8 @@ API docs: **http://localhost:8000/docs**
 - `TTA_AGGREGATION` (`mean` | `geometric_mean` | `max`, default: `geometric_mean`)
 - `CORS_ORIGINS` (comma-separated frontend origins)
 - `GEMINI_API_KEY` (optional — enables Gemini-based validation that rejects non-dermatoscopic images before inference)
-- `SUPABASE_JWT_SECRET` (required — JWT secret from Supabase Dashboard → API → JWT Secret; used to authenticate `/classify` requests)
+- `SUPABASE_URL` (required — Supabase project URL from Dashboard → API → Project URL; used for JWKS-based ES256 token verification)
+- `SUPABASE_JWT_SECRET` (optional — JWT secret for legacy HS256 fallback; only needed if JWKS verification fails)
 
 ## Frontend Contract
 

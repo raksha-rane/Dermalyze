@@ -38,11 +38,24 @@ const assertValidResponse = (payload: unknown): ClassifyResponse => {
 };
 
 export const classifyImage = async (imageDataUrl: string): Promise<ClassResult[]> => {
-  // Get current Supabase session token
-  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+  // Get current Supabase session and check expiry
+  let { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
   if (sessionError || !session?.access_token) {
     throw new ApiError('Authentication required. Please log in again.', 401);
+  }
+
+  // Check if token will expire within next 60 seconds, refresh if needed
+  const expiresAt = session.expires_at ? session.expires_at * 1000 : 0; // Convert to ms
+  const now = Date.now();
+  const expiresInMs = expiresAt - now;
+
+  if (expiresInMs < 60_000) { // Less than 60 seconds remaining
+    const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+    if (refreshError || !refreshData.session?.access_token) {
+      throw new ApiError('Session expired. Please log in again.', 401);
+    }
+    session = refreshData.session;
   }
 
   const imageBlob = await (await fetch(imageDataUrl)).blob();

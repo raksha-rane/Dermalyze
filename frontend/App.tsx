@@ -73,6 +73,7 @@ const App: React.FC = () => {
 
   const [selectedImage,       setSelectedImage]       = useState<string | null>(null);
   const [analysisResults,     setAnalysisResults]     = useState<ClassResult[] | null>(null);
+  const [analysisCaseId,      setAnalysisCaseId]      = useState<string | null>(null);
   const [analysisError,       setAnalysisError]       = useState<string | null>(null);
   const [analysisRetryable,   setAnalysisRetryable]   = useState(false);
   const [selectedHistoryItem, setSelectedHistoryItem] = useState<AnalysisHistoryItem | null>(null);
@@ -183,6 +184,7 @@ const App: React.FC = () => {
   const resetAnalysis = () => {
     setSelectedImage(null);
     setAnalysisResults(null);
+    setAnalysisCaseId(null);
     setAnalysisError(null);
     setAnalysisRetryable(false);
     navigate(ROUTES.upload);
@@ -266,18 +268,24 @@ const App: React.FC = () => {
               <AppLayout onLogout={handleRequestLogout}>
                 <ProcessingScreen
                   image={selectedImage}
-                  onComplete={(results) => { setAnalysisResults(results); navigate(ROUTES.results); }}
+                  onComplete={(results) => {
+                    const caseId = crypto.randomUUID();
+                    setAnalysisCaseId(caseId);
+                    setAnalysisResults(results);
+                    navigate(ROUTES.results);
+                  }}
                   onError={(msg, retryable) => { setAnalysisError(msg ?? null); setAnalysisRetryable(retryable ?? false); navigate(ROUTES.error); }}
                 />
               </AppLayout>
               )
             } />
             <Route path={ROUTES.results} element={
-              (!selectedImage || !analysisResults) ? <Navigate to={ROUTES.upload} replace /> : (
+              (!selectedImage || !analysisResults || !analysisCaseId) ? <Navigate to={ROUTES.upload} replace /> : (
               <AppLayout onLogout={handleRequestLogout}>
                 <ResultsScreen
                   image={selectedImage}
                   results={analysisResults}
+                  caseId={analysisCaseId}
                   onAnalyzeAnother={resetAnalysis}
                   onNavigateToHistory={() => navigate(ROUTES.history)}
                 />

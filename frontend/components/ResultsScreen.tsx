@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Button from './ui/Button';
 import ResultCard from './ui/ResultCard';
 import ProbabilityChart from './ui/ProbabilityChart';
@@ -10,6 +10,7 @@ import type { ClassResult } from '../lib/types';
 interface ResultsScreenProps {
   image: string | null;
   results: ClassResult[] | null;
+  caseId: string;
   onAnalyzeAnother: () => void;
   onNavigateToHistory: () => void;
 }
@@ -56,6 +57,7 @@ interface ResultsScreenProps {
 const ResultsScreen: React.FC<ResultsScreenProps> = ({
   image,
   results,
+  caseId,
   onAnalyzeAnother,
   onNavigateToHistory,
 }) => {
@@ -82,9 +84,8 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({
 
   const info = predictedClass ? classInfoMap[predictedClass.id] : undefined;
 
-  // Stable UUID v4 generated once per mount — used as the actual DB primary key
-  // and image storage path, so the displayed ID always matches the real record.
-  const caseId = useMemo(() => crypto.randomUUID(), []);
+  // Case ID is provided by parent component (generated once when results are received)
+  // This prevents duplicate records if the component remounts with the same results
   const caseIdDisplay = `DRM-${caseId.slice(0, 8).toUpperCase()}`;
   const analysisDate = new Date().toLocaleDateString('en-US', {
     year: 'numeric',
@@ -156,11 +157,19 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({
         .eq('user_id', user.id)
         .select('id');
       if (error) throw error;
-      if (!updated || updated.length === 0) throw new Error('no_rows');
+      if (!updated || updated.length === 0) {
+        // No rows updated - record may have been deleted or doesn't belong to user
+        setNoteError('This analysis record no longer exists. It may have been deleted.');
+        return;
+      }
       setNoteSaved(true);
       setTimeout(() => setNoteSaved(false), 3000);
-    } catch {
-      setNoteError('Could not save note. Please try again.');
+    } catch (err: unknown) {
+      // Differentiate between database errors and other errors
+      const errorMessage = err instanceof Error && err.message === 'Not authenticated'
+        ? 'Authentication expired. Please log in again.'
+        : 'Could not save note. Please check your connection and try again.';
+      setNoteError(errorMessage);
     } finally {
       setSavingNote(false);
     }
