@@ -6,8 +6,8 @@
 # Data Configuration
 # -----------------------------------------------------------------------------
 data:
-  images_dir: data/ISIC2019Training/images
-  labels_csv: data/ISIC2019Training/labels.csv
+  images_dir: data/HAM10000_Training/images
+  labels_csv: data/HAM10000_Training/labels_with_metadata.csv
   split_seed: 42
   val_size: 0.15
   test_size: 0.15
@@ -22,13 +22,13 @@ data:
   # Enable to use patient metadata (age, sex, anatomical site) along with images
   # Requires CSV to have columns: age, sex, localization
   use_metadata: true
-  metadata_columns: [age_approx, anatom_site_general, sex]
+  metadata_columns: [age_approx, anatom_site, sex]
 
 # -----------------------------------------------------------------------------
 # Model Configuration
 # -----------------------------------------------------------------------------
 model:
-  backbone: efficientnet_b0
+  backbone: ResNeSt-101
   num_classes: 7
   image_size: 224
   pretrained: true
@@ -51,7 +51,7 @@ training:
   stage1_weight_decay: 0.01
   stage2_epochs: 35
   stage_epoch_mode: fit_total
-  stage2_lr: 0.00025
+  stage2_lr: 0.0005
   stage2_weight_decay: 0.02
 
   # Data Loading
@@ -68,9 +68,9 @@ training:
   gradient_accumulation_steps: 2
 
   # Data Augmentation
-  mixup_alpha: 0.1
-  cutmix_alpha: 0.1
-  mixup_prob: 0.25
+  mixup_alpha: 0.0
+  cutmix_alpha: 0.0
+  mixup_prob: 0.0
   cutmix_prob: 0.15
 
   # Learning Rate Scheduler
@@ -87,7 +87,7 @@ training:
     enabled: true
     decay: 0.999
     use_for_eval: true
-    save_best: true
+    save_best: false
 
   # Early Stopping
   early_stopping_patience: 7
@@ -99,7 +99,7 @@ loss:
   type: focal
   alpha: null
   label_smoothing: 0.03
-  class_weight_power: 0.35
+  class_weight_power: 0.0
 
 # -----------------------------------------------------------------------------
 # Output Configuration
@@ -112,9 +112,9 @@ output:
 # -----------------------------------------------------------------------------
 evaluation:
   tta:
-    use_tta: true
+    use_tta: false
     mode: full
-    aggregation: geometric_mean
+    aggregation: mean
     use_clahe_tta: false
     clahe_clip_limit: 2.0
     clahe_grid_size: 8
