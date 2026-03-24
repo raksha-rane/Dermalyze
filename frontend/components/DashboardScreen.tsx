@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import Button from './ui/Button';
 import { supabase } from '../lib/supabase';
+import { decryptImage, blobToDataUrl } from '../lib/imageEncryption';
 
 interface DashboardScreenProps {
   onNavigateToUpload: () => void;
@@ -97,11 +98,39 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({
         const last = (!lastErr && lastRows && lastRows.length > 0) ? lastRows[0] : null;
 
         let resolvedImageUrl: string | null = last?.image_url ?? null;
-        if (resolvedImageUrl && !resolvedImageUrl.startsWith('http')) {
-          const { data: signed } = await supabase.storage
-            .from('analysis-images')
-            .createSignedUrl(resolvedImageUrl, 60 * 60); // 1-hour expiry
-          resolvedImageUrl = signed?.signedUrl ?? null;
+        if (resolvedImageUrl && !resolvedImageUrl.startsWith('http') && user) {
+          try {
+            // Check if the file is encrypted (has .enc extension)
+            const isEncrypted = resolvedImageUrl.endsWith('.enc');
+
+            // Fetch signed URL
+            const { data: signed } = await supabase.storage
+              .from('analysis-images')
+              .createSignedUrl(resolvedImageUrl, 60 * 60); // 1-hour expiry
+
+            if (signed?.signedUrl) {
+              if (isEncrypted) {
+                // New encrypted images: fetch and decrypt
+                const response = await fetch(signed.signedUrl);
+                if (response.ok) {
+                  const encryptedBlob = await response.blob();
+                  // Decrypt and convert to data URL
+                  const decryptedBlob = await decryptImage(encryptedBlob, user.id, 'image/webp');
+                  resolvedImageUrl = await blobToDataUrl(decryptedBlob);
+                } else {
+                  resolvedImageUrl = null;
+                }
+              } else {
+                // Old unencrypted images: use signed URL directly
+                resolvedImageUrl = signed.signedUrl;
+              }
+            } else {
+              resolvedImageUrl = null;
+            }
+          } catch (err) {
+            console.error('Failed to process dashboard image:', err);
+            resolvedImageUrl = null;
+          }
         }
 
         const lastAnalysis = last ? {

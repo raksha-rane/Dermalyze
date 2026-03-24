@@ -5,6 +5,8 @@ import ProbabilityChart from './ui/ProbabilityChart';
 import MedicalInfoCard from './ui/MedicalInfoCard';
 import { classInfoMap } from '../lib/classInfo';
 import { supabase } from '../lib/supabase';
+import { optimizeImage } from '../lib/imageOptimization';
+import { encryptImage, getEncryptedExtension } from '../lib/imageEncryption';
 import type { ClassResult } from '../lib/types';
 
 interface ResultsScreenProps {
@@ -105,18 +107,29 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
 
-        // Upload image to Supabase Storage
+        // Upload image to Supabase Storage with client-side encryption
+        // Step 1: Optimize to WebP format (~40% size reduction)
+        // Step 2: Encrypt with user-specific key (admin cannot view images)
         // Store the path (not a public URL) so signed URLs can be generated at display time
         let image_url: string | null = null;
         if (image) {
-          const blob = await (await fetch(image)).blob();
-          const ext = blob.type === 'image/png' ? 'png' : 'jpg';
+          // Convert to WebP with 75% quality (1024px max dimension)
+          const optimizedBlob = await optimizeImage(image, {
+            maxDimension: 1024,
+            quality: 0.75,
+            format: 'image/webp'
+          });
+
+          // Encrypt the optimized image for privacy
+          const encryptedBlob = await encryptImage(optimizedBlob, user.id);
+
+          const ext = getEncryptedExtension();
           const path = `${user.id}/${caseId}.${ext}`;
           const { error: uploadErr } = await supabase.storage
             .from('analysis-images')
-            .upload(path, blob, { contentType: blob.type });
+            .upload(path, encryptedBlob, { contentType: 'application/octet-stream' });
           if (!uploadErr) {
-            image_url = path; // store path; HistoryScreen generates signed URLs on fetch
+            image_url = path; // store path; HistoryScreen generates signed URLs + decrypts on fetch
           }
         }
 

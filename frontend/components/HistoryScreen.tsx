@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Button from './ui/Button';
 import { supabase } from '../lib/supabase';
+import { decryptImage, blobToDataUrl } from '../lib/imageEncryption';
 import type { AnalysisHistoryItem } from '../lib/types';
 
 // Re-export so HistoryDetailScreen can still import from here
@@ -32,27 +33,55 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ onBack, onViewDetails }) 
   const modalRef     = useRef<HTMLDivElement>(null);
   const cancelBtnRef = useRef<HTMLButtonElement>(null);
 
-  const mapRows = async (data: Record<string, unknown>[]): Promise<AnalysisHistoryItem[]> => {
+  const mapRows = async (data: Record<string, unknown>[], userId: string): Promise<AnalysisHistoryItem[]> => {
     const paths = data
       .map((row) => row.image_url as string | null)
       .filter((p): p is string => !!p && !p.startsWith('http'));
 
-    let signedUrlMap: Record<string, string> = {};
+    let imageUrlMap: Record<string, string> = {};
     if (paths.length > 0) {
       const { data: signed } = await supabase.storage
         .from('analysis-images')
         .createSignedUrls(paths, 60 * 60); // 1-hour expiry
+
       if (signed) {
-        for (const entry of signed) {
-          if (entry.signedUrl) signedUrlMap[entry.path] = entry.signedUrl;
-        }
+        // Fetch and decrypt encrypted images (or use signed URLs for old unencrypted images)
+        await Promise.all(
+          signed.map(async (entry) => {
+            if (!entry.signedUrl) return;
+            try {
+              // Check if the file is encrypted (has .enc extension)
+              const isEncrypted = entry.path.endsWith('.enc');
+
+              if (isEncrypted) {
+                // New encrypted images: fetch and decrypt
+                const response = await fetch(entry.signedUrl);
+                if (!response.ok) return;
+                const encryptedBlob = await response.blob();
+
+                // Decrypt the image
+                const decryptedBlob = await decryptImage(encryptedBlob, userId, 'image/webp');
+
+                // Convert to data URL for display
+                const dataUrl = await blobToDataUrl(decryptedBlob);
+                imageUrlMap[entry.path] = dataUrl;
+              } else {
+                // Old unencrypted images: use signed URL directly
+                imageUrlMap[entry.path] = entry.signedUrl;
+              }
+            } catch (err) {
+              console.error(`Failed to process image ${entry.path}:`, err);
+              // Silently skip - image won't display but won't break the UI
+            }
+          })
+        );
       }
     }
 
     return data.map((row) => {
       const rawUrl = row.image_url as string | null;
       const imageUrl = rawUrl
-        ? (rawUrl.startsWith('http') ? rawUrl : (signedUrlMap[rawUrl] ?? undefined))
+        ? (rawUrl.startsWith('http') ? rawUrl : (imageUrlMap[rawUrl] ?? undefined))
         : undefined;
       return {
         id:         row.id as string,
@@ -89,7 +118,7 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ onBack, onViewDetails }) 
 
         if (error) throw error;
         const rows = data ?? [];
-        setHistoryItems(await mapRows(rows));
+        setHistoryItems(await mapRows(rows, uid ?? ''));
         setHasMore(rows.length === PAGE_SIZE);
       } catch {
         setHistoryError('Could not load analysis history. Please try again.');
@@ -114,7 +143,7 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ onBack, onViewDetails }) 
 
       if (error) throw error;
       const rows = data ?? [];
-      const mappedRows = await mapRows(rows);
+      const mappedRows = await mapRows(rows, userId);
       setHistoryItems((prev) => [...prev, ...mappedRows]);
       setHasMore(rows.length === PAGE_SIZE);
       setPage(nextPage);
