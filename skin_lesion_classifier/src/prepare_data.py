@@ -163,6 +163,10 @@ def merge_with_metadata(
     # Build column mapping for metadata
     column_map = {}
 
+    # Lesion ID column (critical for preventing data leakage)
+    if "lesion_id" in metadata_df.columns:
+        column_map["lesion_id"] = "lesion_id"
+
     # Age column
     if "age_approx" in metadata_df.columns:
         column_map["age_approx"] = "age_approx"
@@ -178,6 +182,8 @@ def merge_with_metadata(
         column_map["anatom_site_general"] = "anatom_site"
     elif "anatom_site" in metadata_df.columns:
         column_map["anatom_site"] = "anatom_site"
+    elif "localization" in metadata_df.columns:
+        column_map["localization"] = "anatom_site"
 
     # Select columns to keep
     columns_to_keep = ["image_id"]
