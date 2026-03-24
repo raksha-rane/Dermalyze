@@ -26,6 +26,8 @@ from sklearn.model_selection import (
 from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
 from torchvision import transforms
 
+from src.data.metadata_encoder import MetadataEncoder
+
 # HAM10000 class labels and their full names
 CLASS_LABELS = {
     "akiec": "Actinic keratoses / Intraepithelial carcinoma",
@@ -67,6 +69,8 @@ class HAM10000Dataset(Dataset):
         target_transform: Optional[Callable] = None,
         use_metadata: bool = False,
         metadata_columns: Optional[list[str]] = None,
+        metadata_encoder: Optional[MetadataEncoder] = None,
+        strict_labels: bool = True,
     ):
         """
         Initialize the dataset.
@@ -84,6 +88,8 @@ class HAM10000Dataset(Dataset):
         self.transform = transform
         self.target_transform = target_transform
         self.use_metadata = use_metadata
+        self.metadata_encoder = metadata_encoder
+        self.strict_labels = strict_labels
 
         # Default metadata columns from HAM10000 dataset
         if metadata_columns is None:
@@ -136,7 +142,7 @@ class HAM10000Dataset(Dataset):
     def __len__(self) -> int:
         return len(self.df)
 
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, int] | Tuple[torch.Tensor, int, dict]:
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, int] | Tuple[torch.Tensor, int, dict] | Tuple[torch.Tensor, int, torch.Tensor]:
         """
         Get a sample from the dataset.
 
@@ -156,7 +162,15 @@ class HAM10000Dataset(Dataset):
         image = Image.open(img_path).convert("RGB")
 
         # Convert label to index
-        label_idx = LABEL_TO_IDX[label]
+        label_idx = LABEL_TO_IDX.get(label)
+        if label_idx is None:
+            if self.strict_labels:
+                raise KeyError(
+                    f"Unknown label {label!r} for image_id={image_id!r}. "
+                    f"Expected one of {sorted(LABEL_TO_IDX.keys())}."
+                )
+            # Sentinel used for unlabeled rows (e.g., external test sets).
+            label_idx = -1
 
         # Apply transforms
         if self.transform:
@@ -175,6 +189,9 @@ class HAM10000Dataset(Dataset):
                     metadata[col] = None
                 else:
                     metadata[col] = value
+            if self.metadata_encoder is not None:
+                metadata_tensor = self.metadata_encoder.encode_metadata_dict(metadata)
+                return image, label_idx, metadata_tensor
             return image, label_idx, metadata
         else:
             return image, label_idx
@@ -386,6 +403,15 @@ def load_and_split_data(
     if invalid_labels:
         raise ValueError(f"Invalid labels found: {invalid_labels}")
 
+    def _sanitize_group_ids(group_series: pd.Series, prefix: str) -> pd.Series:
+        """Return group IDs with NaN replaced by unique per-row surrogate IDs."""
+        groups = group_series.copy()
+        missing_mask = groups.isna()
+        if missing_mask.any():
+            missing_idx = groups.index[missing_mask]
+            groups.loc[missing_mask] = [f"{prefix}_missing_{idx}" for idx in missing_idx]
+        return groups.astype(str)
+
     if use_stratified_group_kfold:
         if kfold_n_splits < 2:
             raise ValueError("kfold_n_splits must be >= 2 for StratifiedGroupKFold")
@@ -399,12 +425,13 @@ def load_and_split_data(
             )
 
         # Optional holdout test split first (group-aware)
+        split_groups = _sanitize_group_ids(df[kfold_group_column], kfold_group_column)
         if test_size > 0:
             gss_test = GroupShuffleSplit(
                 n_splits=1, test_size=test_size, random_state=random_state
             )
             train_val_idx, test_idx = next(
-                gss_test.split(df, df["label"], groups=df[kfold_group_column])
+                gss_test.split(df, df["label"], groups=split_groups)
             )
             train_val_df = df.iloc[train_val_idx]
             test_df = df.iloc[test_idx]
@@ -421,7 +448,7 @@ def load_and_split_data(
             sgkf.split(
                 train_val_df,
                 train_val_df["label"],
-                groups=train_val_df[kfold_group_column],
+                groups=split_groups.iloc[train_val_df.index],
             )
         )
         train_idx, val_idx = split_indices[kfold_fold_index]
@@ -439,12 +466,13 @@ def load_and_split_data(
 
     if has_lesion_id:
         # Lesion-aware splitting using GroupShuffleSplit
+        lesion_groups = _sanitize_group_ids(df["lesion_id"], "lesion_id")
         # First split: separate test set
         gss_test = GroupShuffleSplit(
             n_splits=1, test_size=test_size, random_state=random_state
         )
         train_val_idx, test_idx = next(
-            gss_test.split(df, df["label"], groups=df["lesion_id"])
+            gss_test.split(df, df["label"], groups=lesion_groups)
         )
 
         train_val_df = df.iloc[train_val_idx]
@@ -459,7 +487,7 @@ def load_and_split_data(
             gss_val.split(
                 train_val_df,
                 train_val_df["label"],
-                groups=train_val_df["lesion_id"],
+                groups=lesion_groups.iloc[train_val_df.index],
             )
         )
 
@@ -506,6 +534,9 @@ def create_dataloaders(
     pin_memory: bool = True,
     prefetch_factor: Optional[int] = 2,
     persistent_workers: bool = False,
+    use_metadata: bool = False,
+    metadata_columns: Optional[list[str]] = None,
+    metadata_encoder: Optional[MetadataEncoder] = None,
 ) -> Tuple[DataLoader, DataLoader, DataLoader]:
     """
     Create PyTorch DataLoaders for training, validation, and testing.
@@ -524,6 +555,9 @@ def create_dataloaders(
         pin_memory: Whether to pin memory (faster GPU transfer, only useful for CUDA)
         prefetch_factor: Number of batches to prefetch per worker (None to disable)
         persistent_workers: Keep workers alive between epochs (faster but more memory)
+        use_metadata: Whether to return encoded metadata with each sample
+        metadata_columns: Metadata columns to read from the CSV DataFrame
+        metadata_encoder: Encoder used to convert metadata dicts to tensors
 
     Returns:
         Tuple of (train_loader, val_loader, test_loader)
@@ -533,18 +567,27 @@ def create_dataloaders(
         df=train_df,
         images_dir=images_dir,
         transform=get_transforms("train", image_size, augmentation_strength),
+        use_metadata=use_metadata,
+        metadata_columns=metadata_columns,
+        metadata_encoder=metadata_encoder,
     )
 
     val_dataset = HAM10000Dataset(
         df=val_df,
         images_dir=images_dir,
         transform=get_transforms("val", image_size),
+        use_metadata=use_metadata,
+        metadata_columns=metadata_columns,
+        metadata_encoder=metadata_encoder,
     )
 
     test_dataset = HAM10000Dataset(
         df=test_df,
         images_dir=images_dir,
         transform=get_transforms("test", image_size),
+        use_metadata=use_metadata,
+        metadata_columns=metadata_columns,
+        metadata_encoder=metadata_encoder,
     )
 
     # Create samplers

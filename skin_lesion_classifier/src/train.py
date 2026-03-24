@@ -43,6 +43,8 @@ from src.data.dataset import (
     CLASS_LABELS,
     IDX_TO_LABEL,
 )
+from src.data.metadata_encoder import MetadataEncoder
+from src.models.multi_input import create_multi_input_model
 
 
 # Configure logging
@@ -336,6 +338,49 @@ class MetricTracker:
         }
 
 
+def _parse_batch(
+    batch: Tuple[torch.Tensor, torch.Tensor]
+    | Tuple[torch.Tensor, torch.Tensor, torch.Tensor],
+) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
+    """Parse a dataloader batch that may include metadata."""
+    if len(batch) == 3:
+        images, targets, metadata = batch
+        return images, targets, metadata
+    images, targets = batch
+    return images, targets, None
+
+
+def _forward_model(
+    model: nn.Module,
+    images: torch.Tensor,
+    metadata: Optional[torch.Tensor] = None,
+) -> torch.Tensor:
+    """Forward helper for image-only and multi-input models."""
+    if metadata is not None:
+        return model(images, metadata)
+    return model(images)
+
+
+def _resolve_backbone_module(model: nn.Module) -> Optional[nn.Module]:
+    """Resolve backbone module for freezing/unfreezing across model variants."""
+    if hasattr(model, "backbone"):
+        return model.backbone
+    if hasattr(model, "image_model") and hasattr(model.image_model, "backbone"):
+        return model.image_model.backbone
+    return None
+
+
+def _resolve_stage1_params(model: nn.Module) -> Any:
+    """Resolve trainable parameters for stage-1 warmup."""
+    if hasattr(model, "metadata_mlp") and hasattr(model, "fusion_classifier"):
+        return list(model.metadata_mlp.parameters()) + list(
+            model.fusion_classifier.parameters()
+        )
+    if hasattr(model, "classifier"):
+        return model.classifier.parameters()
+    return model.parameters()
+
+
 def train_one_epoch(
     model: nn.Module,
     train_loader: DataLoader,
@@ -372,8 +417,9 @@ def train_one_epoch(
         Dictionary of training metrics
     """
     model.train()
-    if freeze_backbone and hasattr(model, "backbone"):
-        model.backbone.eval()
+    backbone_module = _resolve_backbone_module(model)
+    if freeze_backbone and backbone_module is not None:
+        backbone_module.eval()
     metrics = MetricTracker()
 
     pbar = tqdm(train_loader, desc=f"Epoch {epoch} [Train]", leave=False)
@@ -384,15 +430,18 @@ def train_one_epoch(
             if param.requires_grad and not param.is_contiguous():
                 param.data = param.data.contiguous()
 
-    for batch_idx, (images, targets) in enumerate(pbar):
+    for batch_idx, batch in enumerate(pbar):
+        images, targets, metadata = _parse_batch(batch)
         # Ensure tensors are contiguous before transfer for MPS
         if not images.is_contiguous():
             images = images.contiguous()
         images = images.to(device, non_blocking=True)
         targets = targets.to(device, non_blocking=True)
+        if metadata is not None:
+            metadata = metadata.to(device, non_blocking=True)
 
         use_mix = False
-        if (mixup_alpha > 0 or cutmix_alpha > 0) and np.random.rand() < mixup_prob:
+        if metadata is None and (mixup_alpha > 0 or cutmix_alpha > 0) and np.random.rand() < mixup_prob:
             if cutmix_alpha > 0 and (
                 mixup_alpha <= 0 or np.random.rand() < cutmix_prob
             ):
@@ -415,7 +464,7 @@ def train_one_epoch(
         # Forward pass with mixed precision
         if use_amp:
             with autocast(device_type=device.type):
-                outputs = model(images)
+                outputs = _forward_model(model, images, metadata)
                 if use_mix:
                     loss = lam * criterion(outputs, targets_a) + (
                         1.0 - lam
@@ -447,7 +496,7 @@ def train_one_epoch(
                 if ema is not None:
                     ema.update(model)
         else:
-            outputs = model(images)
+            outputs = _forward_model(model, images, metadata)
             if use_mix:
                 loss = lam * criterion(outputs, targets_a) + (1.0 - lam) * criterion(
                     outputs, targets_b
@@ -522,14 +571,17 @@ def validate(
 
     pbar = tqdm(val_loader, desc=f"Epoch {epoch} [Val]", leave=False)
 
-    for images, targets in pbar:
+    for batch in pbar:
+        images, targets, metadata = _parse_batch(batch)
         # Ensure contiguous tensors for MPS
         if not images.is_contiguous():
             images = images.contiguous()
         images = images.to(device, non_blocking=True)
         targets = targets.to(device, non_blocking=True)
+        if metadata is not None:
+            metadata = metadata.to(device, non_blocking=True)
 
-        outputs = model(images)
+        outputs = _forward_model(model, images, metadata)
         loss = criterion(outputs, targets)
 
         preds = torch.argmax(outputs, dim=1)
@@ -558,10 +610,11 @@ def save_checkpoint(
     metrics: Dict[str, float],
     config: Dict[str, Any],
     output_dir: Path,
-    model_factory: Any,
+    model_builder: Any,
     is_best: bool = False,
     ema: Optional[ModelEMA] = None,
     save_ema_for_best: bool = False,
+    metadata_encoder_state: Optional[Dict[str, Any]] = None,
 ) -> None:
     """Save model checkpoint."""
     checkpoint = {
@@ -573,6 +626,7 @@ def save_checkpoint(
         "config": config,
         "ema_state_dict": ema.shadow if ema is not None else None,
         "ema_decay": ema.decay if ema is not None else None,
+        "metadata_encoder_state": metadata_encoder_state,
     }
 
     # Save latest checkpoint
@@ -582,14 +636,7 @@ def save_checkpoint(
     def _export_torchscript(best_model_state_dict: Dict[str, torch.Tensor]) -> None:
         """Export TorchScript model for inference portability."""
         try:
-            model_config = config.get("model", {})
-            export_model = model_factory(
-                num_classes=int(model_config.get("num_classes", 7)),
-                pretrained=False,
-                dropout_rate=float(model_config.get("dropout_rate", 0.3)),
-                freeze_backbone=False,
-                use_gradient_checkpointing=False,
-            )
+            export_model = model_builder()
             cpu_state_dict = {
                 name: tensor.detach().cpu()
                 for name, tensor in best_model_state_dict.items()
@@ -719,6 +766,77 @@ def train(
     logger.info(f"Validation samples: {len(val_df)}")
     logger.info(f"Test samples: {len(test_df)}")
 
+    use_metadata = bool(data_config.get("use_metadata", False))
+    metadata_encoder: Optional[MetadataEncoder] = None
+    metadata_encoder_state: Optional[Dict[str, Any]] = None
+    metadata_columns_for_dataset: Optional[list[str]] = None
+
+    if use_metadata:
+        requested_columns = data_config.get("metadata_columns", [])
+        if not isinstance(requested_columns, list) or not requested_columns:
+            raise ValueError(
+                "data.use_metadata=true requires a non-empty data.metadata_columns list"
+            )
+
+        metadata_map = data_config.get("metadata_column_map", {})
+
+        def _infer_column(candidates: list[str], keywords: tuple[str, ...]) -> Optional[str]:
+            for candidate in candidates:
+                name = str(candidate).lower()
+                if any(keyword in name for keyword in keywords):
+                    return candidate
+            return None
+
+        age_column = metadata_map.get("age") or _infer_column(
+            requested_columns, ("age",)
+        )
+        sex_column = metadata_map.get("sex") or _infer_column(
+            requested_columns, ("sex", "gender")
+        )
+        localization_column = metadata_map.get("localization") or _infer_column(
+            requested_columns, ("loc", "site", "anatom")
+        )
+
+        missing_role_columns = []
+        if age_column is None:
+            missing_role_columns.append("age")
+        if sex_column is None:
+            missing_role_columns.append("sex")
+        if localization_column is None:
+            missing_role_columns.append("localization")
+        if missing_role_columns:
+            raise ValueError(
+                "Could not infer metadata role columns for: %s. "
+                "Provide data.metadata_column_map with keys age/sex/localization."
+                % ", ".join(missing_role_columns)
+            )
+
+        metadata_columns_for_dataset = list(
+            dict.fromkeys([age_column, sex_column, localization_column])
+        )
+        missing_df_columns = [
+            col for col in metadata_columns_for_dataset if col not in train_df.columns
+        ]
+        if missing_df_columns:
+            raise ValueError(
+                f"Metadata columns missing from labels CSV: {missing_df_columns}"
+            )
+
+        metadata_encoder = MetadataEncoder(
+            age_column=age_column,
+            sex_column=sex_column,
+            localization_column=localization_column,
+        ).fit(train_df)
+        metadata_encoder_state = metadata_encoder.save_state()
+
+        logger.info(
+            "Metadata enabled | columns=(age=%s, sex=%s, localization=%s) | dim=%d",
+            age_column,
+            sex_column,
+            localization_column,
+            metadata_encoder.get_metadata_dim(),
+        )
+
     # Save split information
     train_df.to_csv(output_dir / "train_split.csv", index=False)
     val_df.to_csv(output_dir / "val_split.csv", index=False)
@@ -759,6 +877,10 @@ def train(
         logger.info("AMP: disabled (training.use_amp=false)")
     if gradient_accumulation_steps > 1:
         logger.info(f"Using gradient accumulation: {gradient_accumulation_steps} steps")
+    if use_metadata and (mixup_alpha > 0 or cutmix_alpha > 0):
+        logger.warning("MixUp/CutMix disabled because metadata fusion is enabled.")
+        mixup_alpha = 0.0
+        cutmix_alpha = 0.0
 
     # Optional two-stage fine-tuning (head warmup -> full fine-tune)
     stage1_epochs = int(train_config.get("stage1_epochs", 0) or 0)
@@ -816,6 +938,9 @@ def train(
         pin_memory=(device.type == "cuda"),  # Pin memory only works on CUDA
         prefetch_factor=train_config.get("prefetch_factor", 2),
         persistent_workers=train_config.get("persistent_workers", True),
+        use_metadata=use_metadata,
+        metadata_columns=metadata_columns_for_dataset,
+        metadata_encoder=metadata_encoder,
     )
 
     # Loss configuration and class weights
@@ -847,13 +972,50 @@ def train(
         backbone_display_name,
         backbone_key,
     )
-    model = create_model(
-        num_classes=model_config.get("num_classes", 7),
-        pretrained=model_config.get("pretrained", True),
-        dropout_rate=model_config.get("dropout_rate", 0.3),
-        freeze_backbone=model_config.get("freeze_backbone", False),
-        use_gradient_checkpointing=use_gradient_checkpointing,
-    )
+    image_model_kwargs = {
+        "num_classes": model_config.get("num_classes", 7),
+        "pretrained": model_config.get("pretrained", True),
+        "dropout_rate": model_config.get("dropout_rate", 0.3),
+        "freeze_backbone": model_config.get("freeze_backbone", False),
+        "use_gradient_checkpointing": use_gradient_checkpointing,
+    }
+    image_model_export_kwargs = {
+        "num_classes": model_config.get("num_classes", 7),
+        "pretrained": False,
+        "dropout_rate": model_config.get("dropout_rate", 0.3),
+        "freeze_backbone": False,
+        "use_gradient_checkpointing": False,
+    }
+
+    if use_metadata:
+        if metadata_encoder is None:
+            raise RuntimeError("Metadata encoder was not initialized")
+        model = create_multi_input_model(
+            image_model_factory=create_model,
+            image_model_kwargs=image_model_kwargs,
+            metadata_dim=metadata_encoder.get_metadata_dim(),
+            num_classes=model_config.get("num_classes", 7),
+            metadata_hidden_dim=int(model_config.get("metadata_hidden_dim", 64)),
+            fusion_hidden_dim=int(model_config.get("fusion_hidden_dim", 256)),
+            dropout_rate=float(model_config.get("dropout_rate", 0.3)),
+        )
+    else:
+        model = create_model(**image_model_kwargs)
+
+    def model_builder() -> nn.Module:
+        if use_metadata:
+            if metadata_encoder is None:
+                raise RuntimeError("Metadata encoder was not initialized")
+            return create_multi_input_model(
+                image_model_factory=create_model,
+                image_model_kwargs=image_model_export_kwargs,
+                metadata_dim=metadata_encoder.get_metadata_dim(),
+                num_classes=model_config.get("num_classes", 7),
+                metadata_hidden_dim=int(model_config.get("metadata_hidden_dim", 64)),
+                fusion_hidden_dim=int(model_config.get("fusion_hidden_dim", 256)),
+                dropout_rate=float(model_config.get("dropout_rate", 0.3)),
+            )
+        return create_model(**image_model_export_kwargs)
 
     if use_gradient_checkpointing:
         logger.info("Gradient checkpointing enabled (reduces memory usage)")
@@ -916,9 +1078,7 @@ def train(
         stage_epochs: int,
         only_classifier: bool,
     ):
-        params = (
-            model.classifier.parameters() if only_classifier else model.parameters()
-        )
+        params = _resolve_stage1_params(model) if only_classifier else model.parameters()
         optimizer = AdamW(
             params,
             lr=stage_lr,
@@ -1076,10 +1236,11 @@ def train(
                 },
                 config=config,
                 output_dir=output_dir,
-                model_factory=create_model,
+                model_builder=model_builder,
                 is_best=is_best,
                 ema=ema,
                 save_ema_for_best=ema_save_best,
+                metadata_encoder_state=metadata_encoder_state,
             )
 
             if enable_early_stopping and early_stopping(val_metrics["loss"]):
@@ -1095,7 +1256,10 @@ def train(
         if hasattr(model, "_freeze_backbone"):
             model._freeze_backbone()
         else:
-            for param in model.backbone.parameters():
+            backbone_module = _resolve_backbone_module(model)
+            if backbone_module is None:
+                raise RuntimeError("Could not resolve model backbone for stage 1")
+            for param in backbone_module.parameters():
                 param.requires_grad = False
         stage1_remaining = stage1_epochs - current_epoch
         optimizer, scheduler = build_optimizer_and_scheduler(
@@ -1120,7 +1284,10 @@ def train(
         if hasattr(model, "unfreeze_backbone"):
             model.unfreeze_backbone()
         else:
-            for param in model.backbone.parameters():
+            backbone_module = _resolve_backbone_module(model)
+            if backbone_module is None:
+                raise RuntimeError("Could not resolve model backbone for stage 2")
+            for param in backbone_module.parameters():
                 param.requires_grad = True
         stage2_remaining = total_epochs - current_epoch
         optimizer, scheduler = build_optimizer_and_scheduler(

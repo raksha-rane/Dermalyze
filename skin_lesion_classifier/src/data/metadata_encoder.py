@@ -1,5 +1,5 @@
 """
-Metadata encoding and preprocessing utilities for HAM10000 dataset.
+Metadata encoding and preprocessing utilities for skin lesion datasets.
 
 This module provides tools for processing patient metadata (age, sex, anatomical site)
 to be used as additional features in multi-input models.
@@ -16,7 +16,7 @@ import torch
 
 class MetadataEncoder:
     """
-    Encoder for HAM10000 patient metadata.
+    Encoder for patient metadata from skin lesion datasets.
 
     Handles encoding of categorical variables (sex, localization) and
     normalization of continuous variables (age). Supports missing value imputation.
@@ -28,6 +28,9 @@ class MetadataEncoder:
         age_std: Optional[float] = None,
         sex_categories: Optional[list[str]] = None,
         localization_categories: Optional[list[str]] = None,
+        age_column: str = "age",
+        sex_column: str = "sex",
+        localization_column: str = "localization",
     ):
         """
         Initialize the metadata encoder.
@@ -42,6 +45,9 @@ class MetadataEncoder:
         self.age_std = age_std
         self.sex_categories = sex_categories
         self.localization_categories = localization_categories
+        self.age_column = age_column
+        self.sex_column = sex_column
+        self.localization_column = localization_column
 
         # Default values for missing data
         self.default_age = 50.0  # Will be updated during fit
@@ -59,28 +65,43 @@ class MetadataEncoder:
             Self for method chaining
         """
         # Compute age statistics (ignoring NaN)
-        if 'age' in df.columns:
-            age_values = df['age'].dropna()
+        if self.age_column in df.columns:
+            age_values = pd.to_numeric(df[self.age_column], errors='coerce').dropna()
             if len(age_values) > 0:
                 self.age_mean = float(age_values.mean())
                 self.age_std = float(age_values.std())
+                if not np.isfinite(self.age_std) or self.age_std <= 1e-8:
+                    self.age_std = 1.0
                 self.default_age = self.age_mean
             else:
                 # Fallback if all ages are missing
                 self.age_mean = 50.0
                 self.age_std = 15.0
                 self.default_age = 50.0
+        else:
+            self.age_mean = 50.0
+            self.age_std = 15.0
+            self.default_age = 50.0
 
         # Get unique sex categories
-        if 'sex' in df.columns:
-            sex_values = df['sex'].dropna().unique().tolist()
+        if self.sex_column in df.columns:
+            sex_values = (
+                df[self.sex_column].dropna().astype(str).str.lower().unique().tolist()
+            )
             self.sex_categories = sorted(sex_values) + ['unknown']
         else:
             self.sex_categories = ['unknown']
 
         # Get unique localization categories
-        if 'localization' in df.columns:
-            loc_values = df['localization'].dropna().unique().tolist()
+        if self.localization_column in df.columns:
+            loc_values = (
+                df[self.localization_column]
+                .dropna()
+                .astype(str)
+                .str.lower()
+                .unique()
+                .tolist()
+            )
             self.localization_categories = sorted(loc_values) + ['unknown']
         else:
             self.localization_categories = ['unknown']
@@ -100,21 +121,24 @@ class MetadataEncoder:
         features = []
 
         # Encode age (normalized)
-        age = metadata.get('age')
+        age = metadata.get(self.age_column)
         if age is None or pd.isna(age):
             age = self.default_age
         else:
-            age = float(age)
+            try:
+                age = float(age)
+            except (TypeError, ValueError):
+                age = self.default_age
 
         # Normalize age
-        if self.age_std > 0:
+        if self.age_std and self.age_std > 0:
             age_normalized = (age - self.age_mean) / self.age_std
         else:
             age_normalized = 0.0
         features.append(age_normalized)
 
         # Encode sex (one-hot)
-        sex = metadata.get('sex')
+        sex = metadata.get(self.sex_column)
         if sex is None or pd.isna(sex):
             sex = self.default_sex
         sex = str(sex).lower()
@@ -123,7 +147,7 @@ class MetadataEncoder:
         features.extend(sex_encoded)
 
         # Encode localization (one-hot)
-        localization = metadata.get('localization')
+        localization = metadata.get(self.localization_column)
         if localization is None or pd.isna(localization):
             localization = self.default_localization
         localization = str(localization).lower()
@@ -167,6 +191,9 @@ class MetadataEncoder:
             'age_std': self.age_std,
             'sex_categories': self.sex_categories,
             'localization_categories': self.localization_categories,
+            'age_column': self.age_column,
+            'sex_column': self.sex_column,
+            'localization_column': self.localization_column,
             'default_age': self.default_age,
             'default_sex': self.default_sex,
             'default_localization': self.default_localization,
@@ -188,6 +215,9 @@ class MetadataEncoder:
             age_std=state['age_std'],
             sex_categories=state['sex_categories'],
             localization_categories=state['localization_categories'],
+            age_column=state.get('age_column', 'age'),
+            sex_column=state.get('sex_column', 'sex'),
+            localization_column=state.get('localization_column', 'localization'),
         )
         encoder.default_age = state.get('default_age', 50.0)
         encoder.default_sex = state.get('default_sex', 'unknown')

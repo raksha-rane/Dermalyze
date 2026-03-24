@@ -51,17 +51,19 @@ from src.data.dataset import (
     IMAGENET_MEAN,
     IMAGENET_STD,
 )
-from src.models.convnext import SkinLesionConvNeXtClassifier
-from src.models.efficientnet import SkinLesionClassifier
-from src.models.efficientnet_b1 import SkinLesionClassifierB1
-from src.models.efficientnet_b2 import SkinLesionClassifierB2
-from src.models.efficientnet_b3 import SkinLesionClassifierB3
-from src.models.efficientnet_b4 import SkinLesionClassifierB4
-from src.models.efficientnet_b5 import SkinLesionClassifierB5
-from src.models.efficientnet_b6 import SkinLesionClassifierB6
-from src.models.efficientnet_b7 import SkinLesionClassifierB7
-from src.models.resnest_101 import SkinLesionResNeSt101Classifier
-from src.models.seresnext_101 import SkinLesionSEResNeXt101Classifier
+from src.data.metadata_encoder import MetadataEncoder
+from src.models.convnext import SkinLesionConvNeXtClassifier, create_model as create_convnext_tiny_model
+from src.models.efficientnet import SkinLesionClassifier, create_model as create_efficientnet_b0_model
+from src.models.efficientnet_b1 import SkinLesionClassifierB1, create_model_b1
+from src.models.efficientnet_b2 import SkinLesionClassifierB2, create_model_b2
+from src.models.efficientnet_b3 import SkinLesionClassifierB3, create_model_b3
+from src.models.efficientnet_b4 import SkinLesionClassifierB4, create_model_b4
+from src.models.efficientnet_b5 import SkinLesionClassifierB5, create_model_b5
+from src.models.efficientnet_b6 import SkinLesionClassifierB6, create_model_b6
+from src.models.efficientnet_b7 import SkinLesionClassifierB7, create_model_b7
+from src.models.multi_input import create_multi_input_model
+from src.models.resnest_101 import SkinLesionResNeSt101Classifier, create_model_resnest101
+from src.models.seresnext_101 import SkinLesionSEResNeXt101Classifier, create_model_seresnext101
 from src.tta_constants import TTA_AUG_COUNTS
 
 
@@ -220,10 +222,33 @@ def compute_ensemble_weights_from_metrics(
     return weights
 
 
+def _parse_eval_batch(
+    batch: Tuple[torch.Tensor, torch.Tensor]
+    | Tuple[torch.Tensor, torch.Tensor, torch.Tensor],
+) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
+    """Parse evaluation batch with optional metadata tensor."""
+    if len(batch) == 3:
+        images, targets, metadata = batch
+        return images, targets, metadata
+    images, targets = batch
+    return images, targets, None
+
+
+def _forward_with_optional_metadata(
+    model: nn.Module,
+    images: torch.Tensor,
+    metadata: Optional[torch.Tensor] = None,
+) -> torch.Tensor:
+    """Forward through either image-only or multi-input model."""
+    if metadata is not None:
+        return model(images, metadata)
+    return model(images)
+
+
 def load_model(
     checkpoint_path: Path,
     device: torch.device,
-) -> Tuple[nn.Module, Dict[str, Any], Dict[str, float]]:
+) -> Tuple[nn.Module, Dict[str, Any], Dict[str, float], Optional[Dict[str, Any]]]:
     """
     Load a trained model from checkpoint.
 
@@ -232,18 +257,20 @@ def load_model(
         device: Device to load model on
 
     Returns:
-        Tuple of (model, config, metrics)
+        Tuple of (model, config, metrics, metadata_encoder_state)
     """
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
     if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
         config = checkpoint.get("config", {})
         metrics = checkpoint.get("metrics", {})
         model_state = checkpoint["model_state_dict"]
+        metadata_encoder_state = checkpoint.get("metadata_encoder_state")
     elif isinstance(checkpoint, dict):
         # Support raw state_dict checkpoints.
         config = {}
         metrics = {}
         model_state = checkpoint
+        metadata_encoder_state = None
     else:
         raise RuntimeError(
             f"Unsupported checkpoint format at '{checkpoint_path}'. "
@@ -257,18 +284,18 @@ def load_model(
     # Create model with config
     model_config = config.get("model", {})
 
-    backbone_constructors: List[Tuple[str, Any]] = [
-        ("efficientnet_b0", SkinLesionClassifier),
-        ("efficientnet_b1", SkinLesionClassifierB1),
-        ("efficientnet_b2", SkinLesionClassifierB2),
-        ("efficientnet_b3", SkinLesionClassifierB3),
-        ("efficientnet_b4", SkinLesionClassifierB4),
-        ("efficientnet_b5", SkinLesionClassifierB5),
-        ("efficientnet_b6", SkinLesionClassifierB6),
-        ("efficientnet_b7", SkinLesionClassifierB7),
-        ("convnext_tiny", SkinLesionConvNeXtClassifier),
-        ("resnest_101", SkinLesionResNeSt101Classifier),
-        ("seresnext_101", SkinLesionSEResNeXt101Classifier),
+    backbone_constructors: List[Tuple[str, Any, Any]] = [
+        ("efficientnet_b0", SkinLesionClassifier, create_efficientnet_b0_model),
+        ("efficientnet_b1", SkinLesionClassifierB1, create_model_b1),
+        ("efficientnet_b2", SkinLesionClassifierB2, create_model_b2),
+        ("efficientnet_b3", SkinLesionClassifierB3, create_model_b3),
+        ("efficientnet_b4", SkinLesionClassifierB4, create_model_b4),
+        ("efficientnet_b5", SkinLesionClassifierB5, create_model_b5),
+        ("efficientnet_b6", SkinLesionClassifierB6, create_model_b6),
+        ("efficientnet_b7", SkinLesionClassifierB7, create_model_b7),
+        ("convnext_tiny", SkinLesionConvNeXtClassifier, create_convnext_tiny_model),
+        ("resnest_101", SkinLesionResNeSt101Classifier, create_model_resnest101),
+        ("seresnext_101", SkinLesionSEResNeXt101Classifier, create_model_seresnext101),
     ]
 
     preferred_backbone_raw = str(model_config.get("backbone", "")).strip().lower()
@@ -313,12 +340,31 @@ def load_model(
     model: Optional[nn.Module] = None
     load_error_messages = []
 
-    for architecture_name, model_class in model_constructors:
-        candidate_model = model_class(
-            num_classes=model_config.get("num_classes", 7),
-            pretrained=False,  # We're loading weights from checkpoint
-            dropout_rate=model_config.get("dropout_rate", 0.3),
-        )
+    for architecture_name, model_class, model_factory in model_constructors:
+        if metadata_encoder_state is not None:
+            metadata_encoder = MetadataEncoder.from_state(metadata_encoder_state)
+            metadata_dim = metadata_encoder.get_metadata_dim()
+            candidate_model = create_multi_input_model(
+                image_model_factory=model_factory,
+                image_model_kwargs={
+                    "num_classes": model_config.get("num_classes", 7),
+                    "pretrained": False,
+                    "dropout_rate": model_config.get("dropout_rate", 0.3),
+                    "freeze_backbone": False,
+                    "use_gradient_checkpointing": False,
+                },
+                metadata_dim=metadata_dim,
+                num_classes=model_config.get("num_classes", 7),
+                metadata_hidden_dim=int(model_config.get("metadata_hidden_dim", 64)),
+                fusion_hidden_dim=int(model_config.get("fusion_hidden_dim", 256)),
+                dropout_rate=float(model_config.get("dropout_rate", 0.3)),
+            )
+        else:
+            candidate_model = model_class(
+                num_classes=model_config.get("num_classes", 7),
+                pretrained=False,  # We're loading weights from checkpoint
+                dropout_rate=model_config.get("dropout_rate", 0.3),
+            )
         try:
             candidate_model.load_state_dict(model_state)
             model = candidate_model
@@ -343,7 +389,7 @@ def load_model(
     model = model.to(device)
     model.eval()
 
-    return model, config, metrics
+    return model, config, metrics, metadata_encoder_state
 
 
 @torch.no_grad()
@@ -367,11 +413,14 @@ def get_predictions(
     all_preds = []
     all_probs = []
 
-    for images, targets in tqdm(dataloader, desc="Evaluating"):
+    for batch in tqdm(dataloader, desc="Evaluating"):
+        images, targets, metadata = _parse_eval_batch(batch)
         images = images.to(device)
+        if metadata is not None:
+            metadata = metadata.to(device)
 
         # Get predictions
-        logits = model(images)
+        logits = _forward_with_optional_metadata(model, images, metadata)
         probs = F.softmax(logits, dim=1)
         preds = torch.argmax(probs, dim=1)
 
@@ -423,13 +472,15 @@ def get_predictions_with_tta(
             "Install opencv-python or opencv-python-headless."
         )
 
-    for images, targets in tqdm(dataloader, desc=f"Evaluating with TTA ({tta_mode})"):
+    for batch in tqdm(dataloader, desc=f"Evaluating with TTA ({tta_mode})"):
+        images, targets, metadata = _parse_eval_batch(batch)
         batch_size = images.size(0)
 
         # Collect TTA predictions for each image in batch
         batch_tta_probs = []
 
         images_device = images.to(device)
+        metadata_device = metadata.to(device) if metadata is not None else None
 
         total_aug_count = get_tta_aug_count(tta_mode)
 
@@ -473,7 +524,7 @@ def get_predictions_with_tta(
                 )
             # aug_idx == 0: use original
 
-            logits = model(aug_images)
+            logits = _forward_with_optional_metadata(model, aug_images, metadata_device)
             probs = F.softmax(logits, dim=1)
             batch_tta_probs.append(probs.cpu().numpy())
 
@@ -483,7 +534,7 @@ def get_predictions_with_tta(
                 clip_limit=clahe_clip_limit,
                 tile_grid_size=clahe_grid_size,
             ).to(device)
-            logits = model(clahe_images)
+            logits = _forward_with_optional_metadata(model, clahe_images, metadata_device)
             probs = F.softmax(logits, dim=1)
             batch_tta_probs.append(probs.cpu().numpy())
 
@@ -564,7 +615,8 @@ def get_ensemble_predictions(
         desc += f", TTA-{tta_mode}"
     desc += ")"
 
-    for images, targets in tqdm(dataloader, desc=desc):
+    for batch in tqdm(dataloader, desc=desc):
+        images, targets, metadata = _parse_eval_batch(batch)
         # Collect predictions from all models
         model_probs_list = []
         clahe_images = None
@@ -581,6 +633,7 @@ def get_ensemble_predictions(
                 # Use TTA for this model
                 # For batch processing, we'll use a simpler approach
                 images_device = images.to(device)
+                metadata_device = metadata.to(device) if metadata is not None else None
 
                 # Collect TTA predictions
                 tta_probs = []
@@ -625,7 +678,7 @@ def get_ensemble_predictions(
                             aug_images, position="bottom_right", scale=1.1
                         )
 
-                    logits = model(aug_images)
+                    logits = _forward_with_optional_metadata(model, aug_images, metadata_device)
                     probs = F.softmax(logits, dim=1)
                     tta_probs.append(probs.cpu().numpy())
 
@@ -636,7 +689,7 @@ def get_ensemble_predictions(
                 )  # (batch_size, n_augs, n_classes)
 
                 if use_clahe_tta and clahe_images is not None:
-                    logits = model(clahe_images)
+                    logits = _forward_with_optional_metadata(model, clahe_images, metadata_device)
                     probs = F.softmax(logits, dim=1).cpu().numpy()
                     probs = probs[:, np.newaxis, :]  # (batch_size, 1, n_classes)
                     tta_probs = np.concatenate([tta_probs, probs], axis=1)
@@ -653,7 +706,8 @@ def get_ensemble_predictions(
             else:
                 # Standard prediction
                 images_device = images.to(device)
-                logits = model(images_device)
+                metadata_device = metadata.to(device) if metadata is not None else None
+                logits = _forward_with_optional_metadata(model, images_device, metadata_device)
                 probs = F.softmax(logits, dim=1).cpu().numpy()
                 model_probs_list.append(probs)
 
@@ -1093,11 +1147,26 @@ def evaluate(
         logger.info(f"Loading ensemble of {len(checkpoint_path)} models...")
         models = []
         metrics_list = []
+        metadata_states: List[Optional[Dict[str, Any]]] = []
         for i, cp in enumerate(checkpoint_path):
-            model, config, metrics = load_model(Path(cp), device)
+            model, config, metrics, metadata_state = load_model(Path(cp), device)
             models.append(model)
             metrics_list.append(metrics)
+            metadata_states.append(metadata_state)
             logger.info(f"  Model {i+1}: {cp}")
+
+        has_metadata_models = [state is not None for state in metadata_states]
+        if any(has_metadata_models) and not all(has_metadata_models):
+            raise ValueError(
+                "Ensemble checkpoints must all either use metadata or all be image-only."
+            )
+        metadata_encoder_state = metadata_states[0] if metadata_states else None
+        if metadata_encoder_state is not None:
+            for state in metadata_states[1:]:
+                if state != metadata_encoder_state:
+                    raise ValueError(
+                        "Metadata-enabled ensemble checkpoints must share identical metadata encoder state."
+                    )
 
         # Compute weights
         if ensemble_weights:
@@ -1120,7 +1189,7 @@ def evaluate(
             eval_mode += f" + TTA-{tta_mode}"
     else:
         logger.info(f"Loading model from: {checkpoint_path}")
-        model, config, metrics = load_model(checkpoint_path, device)
+        model, config, metrics, metadata_encoder_state = load_model(checkpoint_path, device)
         eval_mode = "standard"
         if use_tta:
             eval_mode = f"TTA-{tta_mode}"
@@ -1137,12 +1206,43 @@ def evaluate(
     logger.info(f"Loading test data from: {test_csv}")
     test_df = pd.read_csv(test_csv)
 
+    metadata_encoder: Optional[MetadataEncoder] = None
+    metadata_columns: Optional[List[str]] = None
+    use_metadata = metadata_encoder_state is not None
+    if use_metadata:
+        metadata_encoder = MetadataEncoder.from_state(metadata_encoder_state)
+        metadata_columns = list(
+            dict.fromkeys(
+                [
+                    metadata_encoder.age_column,
+                    metadata_encoder.sex_column,
+                    metadata_encoder.localization_column,
+                ]
+            )
+        )
+        missing_columns = [col for col in metadata_columns if col not in test_df.columns]
+        if missing_columns:
+            logger.warning(
+                "Metadata columns missing in test CSV: %s. Filling with nulls so encoder defaults are used.",
+                missing_columns,
+            )
+            for col in missing_columns:
+                test_df[col] = None
+        logger.info(
+            "Metadata-aware evaluation enabled with columns: %s",
+            metadata_columns,
+        )
+
     # Create test dataset
     image_size = config.get("model", {}).get("image_size", 224)
     test_dataset = HAM10000Dataset(
         df=test_df,
         images_dir=images_dir,
         transform=get_transforms("test", image_size),
+        use_metadata=use_metadata,
+        metadata_columns=metadata_columns,
+        metadata_encoder=metadata_encoder,
+        strict_labels=False,
     )
 
     test_loader = DataLoader(
@@ -1189,13 +1289,90 @@ def evaluate(
     # Class names in order
     class_names = [IDX_TO_LABEL[i] for i in range(len(CLASS_LABELS))]
 
+    # Save per-sample predictions for all rows (including unlabeled ones).
+    predictions_df = pd.DataFrame({
+        "image_id": test_df["image_id"].astype(str).values,
+        "pred_idx": y_pred.astype(int),
+        "pred_label": [IDX_TO_LABEL[int(idx)] for idx in y_pred],
+        "true_idx": y_true.astype(int),
+    })
+    if "label" in test_df.columns:
+        predictions_df["true_label"] = test_df["label"].astype(str).values
+    for class_idx, class_name in enumerate(class_names):
+        predictions_df[f"prob_{class_name}"] = y_prob[:, class_idx]
+
+    predictions_path = output_dir / "predictions.csv"
+    predictions_df.to_csv(predictions_path, index=False)
+    logger.info(f"Saved predictions to: {predictions_path}")
+
+    valid_mask = (y_true >= 0) & (y_true < len(class_names))
+    labeled_count = int(np.sum(valid_mask))
+    unlabeled_count = int(len(y_true) - labeled_count)
+    if unlabeled_count > 0:
+        logger.info(
+            "Detected %d unlabeled rows; metrics/plots will use only %d labeled rows.",
+            unlabeled_count,
+            labeled_count,
+        )
+
+    if labeled_count == 0:
+        metrics = {
+            "evaluation_mode": eval_mode,
+            "num_samples": int(len(y_true)),
+            "num_labeled_samples": 0,
+            "num_unlabeled_samples": int(len(y_true)),
+            "message": "No ground-truth labels found in test CSV. Metrics and plots skipped.",
+        }
+
+        if use_tta:
+            metrics["tta_config"] = {
+                "mode": tta_mode,
+                "aggregation": tta_aggregation,
+                "use_clahe_tta": bool(use_clahe_tta),
+                "clahe_clip_limit": float(clahe_clip_limit),
+                "clahe_grid_size": int(clahe_grid_size),
+            }
+        if use_ensemble or isinstance(checkpoint_path, list):
+            metrics["ensemble_config"] = {
+                "num_models": len(models),
+                "aggregation": ensemble_aggregation,
+                "weights": (
+                    ensemble_weights.tolist()
+                    if isinstance(ensemble_weights, np.ndarray)
+                    else ensemble_weights
+                ),
+            }
+
+        metrics_path = output_dir / "evaluation_metrics.json"
+        with open(metrics_path, "w") as f:
+            json.dump(metrics, f, indent=2)
+        logger.info(f"Saved metrics to: {metrics_path}")
+
+        print("\n" + "=" * 60)
+        print("EVALUATION SUMMARY")
+        print("=" * 60)
+        print(f"Mode:               {eval_mode}")
+        print(f"Total samples:      {len(y_true)}")
+        print("Ground truth:       unavailable (metrics skipped)")
+        print(f"Predictions CSV:    {predictions_path}")
+        print("=" * 60)
+
+        return metrics
+
+    y_true_labeled = y_true[valid_mask]
+    y_pred_labeled = y_pred[valid_mask]
+    y_prob_labeled = y_prob[valid_mask]
+
     # Compute metrics
     logger.info("Computing metrics...")
-    metrics = compute_metrics(y_true, y_pred, y_prob, class_names)
+    metrics = compute_metrics(y_true_labeled, y_pred_labeled, y_prob_labeled, class_names)
+    metrics["num_samples"] = int(len(y_true))
+    metrics["num_labeled_samples"] = labeled_count
+    metrics["num_unlabeled_samples"] = unlabeled_count
 
     # Compute calibration metrics
     calibration_metrics = plot_calibration_curve(
-        y_true, y_prob, output_dir / "calibration_curve.png"
+        y_true_labeled, y_prob_labeled, output_dir / "calibration_curve.png"
     )
     metrics["calibration"] = calibration_metrics
 
@@ -1210,7 +1387,7 @@ def evaluate(
     )
 
     # ROC curves
-    plot_roc_curves(y_true, y_prob, class_names, output_dir / "roc_curves.png")
+    plot_roc_curves(y_true_labeled, y_prob_labeled, class_names, output_dir / "roc_curves.png")
 
     # Per-class metrics
     plot_per_class_metrics(metrics, class_names, output_dir / "per_class_metrics.png")

@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import numpy as np
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 from PIL import Image
 from torchvision import transforms
@@ -25,7 +26,19 @@ from src.data.dataset import (
     IMAGENET_STD,
     preprocess_image,
 )
-from src.models.efficientnet import SkinLesionClassifier
+from src.data.metadata_encoder import MetadataEncoder
+from src.models.convnext import SkinLesionConvNeXtClassifier, create_model as create_convnext_tiny_model
+from src.models.efficientnet import SkinLesionClassifier, create_model as create_efficientnet_b0_model
+from src.models.efficientnet_b1 import SkinLesionClassifierB1, create_model_b1
+from src.models.efficientnet_b2 import SkinLesionClassifierB2, create_model_b2
+from src.models.efficientnet_b3 import SkinLesionClassifierB3, create_model_b3
+from src.models.efficientnet_b4 import SkinLesionClassifierB4, create_model_b4
+from src.models.efficientnet_b5 import SkinLesionClassifierB5, create_model_b5
+from src.models.efficientnet_b6 import SkinLesionClassifierB6, create_model_b6
+from src.models.efficientnet_b7 import SkinLesionClassifierB7, create_model_b7
+from src.models.multi_input import create_multi_input_model
+from src.models.resnest_101 import SkinLesionResNeSt101Classifier, create_model_resnest101
+from src.models.seresnext_101 import SkinLesionSEResNeXt101Classifier, create_model_seresnext101
 from src.tta_constants import TTA_AUG_COUNTS
 
 try:
@@ -243,35 +256,129 @@ class SkinLesionPredictor:
             self.device = torch.device(device)
 
         # Load model
-        self.model, self.config = self._load_model()
+        self.model, self.config, self.metadata_encoder = self._load_model()
 
         # Class information
         self.class_names = list(sorted(CLASS_LABELS.keys()))
         self.class_descriptions = CLASS_LABELS
 
-    def _load_model(self) -> Tuple[SkinLesionClassifier, Dict[str, Any]]:
+    def _load_model(self) -> Tuple[nn.Module, Dict[str, Any], Optional[MetadataEncoder]]:
         """Load the model from checkpoint."""
         if not self.checkpoint_path.exists():
             raise FileNotFoundError(f"Checkpoint not found: {self.checkpoint_path}")
 
         checkpoint = torch.load(self.checkpoint_path, map_location=self.device, weights_only=False)
         config = checkpoint.get("config", {})
+        metadata_encoder_state = checkpoint.get("metadata_encoder_state")
+        metadata_encoder = (
+            MetadataEncoder.from_state(metadata_encoder_state)
+            if metadata_encoder_state is not None
+            else None
+        )
 
         # Create model
         model_config = config.get("model", {})
-        model = SkinLesionClassifier(
-            num_classes=model_config.get("num_classes", 7),
-            pretrained=False,
-            dropout_rate=model_config.get("dropout_rate", 0.3),
-        )
+        backbone_constructors: List[Tuple[str, Any, Any]] = [
+            ("efficientnet_b0", SkinLesionClassifier, create_efficientnet_b0_model),
+            ("efficientnet_b1", SkinLesionClassifierB1, create_model_b1),
+            ("efficientnet_b2", SkinLesionClassifierB2, create_model_b2),
+            ("efficientnet_b3", SkinLesionClassifierB3, create_model_b3),
+            ("efficientnet_b4", SkinLesionClassifierB4, create_model_b4),
+            ("efficientnet_b5", SkinLesionClassifierB5, create_model_b5),
+            ("efficientnet_b6", SkinLesionClassifierB6, create_model_b6),
+            ("efficientnet_b7", SkinLesionClassifierB7, create_model_b7),
+            ("convnext_tiny", SkinLesionConvNeXtClassifier, create_convnext_tiny_model),
+            ("resnest_101", SkinLesionResNeSt101Classifier, create_model_resnest101),
+            ("seresnext_101", SkinLesionSEResNeXt101Classifier, create_model_seresnext101),
+        ]
 
-        # Load weights
-        model.load_state_dict(checkpoint["model_state_dict"])
+        preferred_backbone_raw = str(model_config.get("backbone", "")).strip().lower()
+        backbone_aliases = {
+            "efficientnet": "efficientnet_b0",
+            "efficientnet-b0": "efficientnet_b0",
+            "efficientnet_b0": "efficientnet_b0",
+            "efficientnet-b1": "efficientnet_b1",
+            "efficientnet_b1": "efficientnet_b1",
+            "efficientnet-b2": "efficientnet_b2",
+            "efficientnet_b2": "efficientnet_b2",
+            "efficientnet-b3": "efficientnet_b3",
+            "efficientnet_b3": "efficientnet_b3",
+            "efficientnet-b4": "efficientnet_b4",
+            "efficientnet_b4": "efficientnet_b4",
+            "efficientnet-b5": "efficientnet_b5",
+            "efficientnet_b5": "efficientnet_b5",
+            "efficientnet-b6": "efficientnet_b6",
+            "efficientnet_b6": "efficientnet_b6",
+            "efficientnet-b7": "efficientnet_b7",
+            "efficientnet_b7": "efficientnet_b7",
+            "convnext": "convnext_tiny",
+            "convnext-tiny": "convnext_tiny",
+            "convnext_tiny": "convnext_tiny",
+            "resnest101": "resnest_101",
+            "resnest-101": "resnest_101",
+            "resnest_101": "resnest_101",
+            "seresnext101": "seresnext_101",
+            "seresnext-101": "seresnext_101",
+            "seresnext_101": "seresnext_101",
+            "se-resnext-101": "seresnext_101",
+            "se_resnext_101": "seresnext_101",
+        }
+        preferred_backbone = backbone_aliases.get(preferred_backbone_raw, "")
+
+        model_constructors = backbone_constructors
+        if preferred_backbone:
+            model_constructors = [
+                item for item in backbone_constructors if item[0] == preferred_backbone
+            ] + [
+                item for item in backbone_constructors if item[0] != preferred_backbone
+            ]
+
+        model: Optional[nn.Module] = None
+        load_errors: List[str] = []
+
+        for architecture_name, model_class, model_factory in model_constructors:
+            if metadata_encoder is not None:
+                candidate_model = create_multi_input_model(
+                    image_model_factory=model_factory,
+                    image_model_kwargs={
+                        "num_classes": model_config.get("num_classes", 7),
+                        "pretrained": False,
+                        "dropout_rate": model_config.get("dropout_rate", 0.3),
+                        "freeze_backbone": False,
+                        "use_gradient_checkpointing": False,
+                    },
+                    metadata_dim=metadata_encoder.get_metadata_dim(),
+                    num_classes=model_config.get("num_classes", 7),
+                    metadata_hidden_dim=int(model_config.get("metadata_hidden_dim", 64)),
+                    fusion_hidden_dim=int(model_config.get("fusion_hidden_dim", 256)),
+                    dropout_rate=float(model_config.get("dropout_rate", 0.3)),
+                )
+            else:
+                candidate_model = model_class(
+                    num_classes=model_config.get("num_classes", 7),
+                    pretrained=False,
+                    dropout_rate=model_config.get("dropout_rate", 0.3),
+                )
+
+            try:
+                candidate_model.load_state_dict(checkpoint["model_state_dict"])
+                model = candidate_model
+                break
+            except RuntimeError as exc:
+                load_errors.append(f"{architecture_name}: {exc}")
+
+        if model is None:
+            attempted = ", ".join(name for name, _, _ in model_constructors)
+            raise RuntimeError(
+                "Could not load checkpoint with supported architectures "
+                f"({attempted}). Config backbone='{preferred_backbone_raw or 'unknown'}'.\n"
+                + "\n".join(load_errors)
+            )
 
         model = model.to(self.device)
         model.eval()
 
-        return model, config
+        return model, config, metadata_encoder
 
     def preprocess(
         self,
@@ -294,10 +401,36 @@ class SkinLesionPredictor:
 
         return tensor
 
+    def _encode_metadata(
+        self,
+        metadata: Optional[Dict[str, Any]] = None,
+        batch_size: int = 1,
+    ) -> Optional[torch.Tensor]:
+        """Encode optional metadata dict into model input tensor."""
+        if self.metadata_encoder is None:
+            return None
+
+        if metadata is None:
+            return None
+
+        encoded = self.metadata_encoder.encode_metadata_dict(metadata).to(self.device)
+        return encoded.unsqueeze(0).repeat(batch_size, 1)
+
+    def _forward(
+        self,
+        images: torch.Tensor,
+        metadata_tensor: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Forward through either image-only or metadata-enabled model."""
+        if metadata_tensor is not None:
+            return self.model(images, metadata_tensor)
+        return self.model(images)
+
     @torch.no_grad()
     def predict(
         self,
         image: Union[str, Path, Image.Image, np.ndarray, bytes],
+        metadata: Optional[Dict[str, Any]] = None,
         top_k: int = 3,
         include_disclaimer: bool = True,
     ) -> Dict[str, Any]:
@@ -320,9 +453,10 @@ class SkinLesionPredictor:
         """
         # Preprocess
         tensor = self.preprocess(image)
+        metadata_tensor = self._encode_metadata(metadata=metadata, batch_size=1)
 
         # Forward pass
-        logits = self.model(tensor)
+        logits = self._forward(tensor, metadata_tensor)
         probs = F.softmax(logits, dim=1)[0]
 
         # Synchronize MPS for accurate results
@@ -369,6 +503,7 @@ class SkinLesionPredictor:
     def predict_batch(
         self,
         images: List[Union[str, Path, Image.Image, np.ndarray, bytes]],
+        metadata: Optional[List[Optional[Dict[str, Any]]]] = None,
         top_k: int = 3,
     ) -> List[Dict[str, Any]]:
         """
@@ -385,8 +520,20 @@ class SkinLesionPredictor:
         tensors = [self.preprocess(img) for img in images]
         batch = torch.cat(tensors, dim=0)
 
+        metadata_tensor = None
+        if self.metadata_encoder is not None and metadata is not None:
+            if len(metadata) != len(images):
+                raise ValueError(
+                    "If metadata is provided for batch prediction, its length must match images."
+                )
+            encoded_rows = [
+                self.metadata_encoder.encode_metadata_dict(item or {})
+                for item in metadata
+            ]
+            metadata_tensor = torch.stack(encoded_rows, dim=0).to(self.device)
+
         # Forward pass
-        logits = self.model(batch)
+        logits = self._forward(batch, metadata_tensor)
         probs = F.softmax(logits, dim=1)
 
         # Process each prediction
@@ -426,6 +573,7 @@ class SkinLesionPredictor:
     def predict_with_tta(
         self,
         image: Union[str, Path, Image.Image, np.ndarray, bytes],
+        metadata: Optional[Dict[str, Any]] = None,
         tta_mode: Literal["light", "medium", "full"] = "medium",
         aggregation: Literal["mean", "geometric_mean", "max"] = "mean",
         use_clahe_tta: bool = False,
@@ -486,9 +634,10 @@ class SkinLesionPredictor:
 
         # Collect predictions from all augmentations
         all_probs = []
+        metadata_tensor = self._encode_metadata(metadata=metadata, batch_size=1)
         for transform in tta_transforms:
             tensor = transform(image).unsqueeze(0).to(self.device)
-            logits = self.model(tensor)
+            logits = self._forward(tensor, metadata_tensor)
             probs = F.softmax(logits, dim=1)[0]
             all_probs.append(probs.cpu().numpy())
 
@@ -500,7 +649,7 @@ class SkinLesionPredictor:
             )
             base_transform = get_base_tta_transform(self.image_size)
             tensor = base_transform(clahe_image).unsqueeze(0).to(self.device)
-            logits = self.model(tensor)
+            logits = self._forward(tensor, metadata_tensor)
             probs = F.softmax(logits, dim=1)[0]
             all_probs.append(probs.cpu().numpy())
 
@@ -565,13 +714,22 @@ class SkinLesionPredictor:
     def get_model_info(self) -> Dict[str, Any]:
         """Get information about the loaded model."""
         model_config = self.config.get("model", {})
+        metadata_columns = None
+        if self.metadata_encoder is not None:
+            metadata_columns = [
+                self.metadata_encoder.age_column,
+                self.metadata_encoder.sex_column,
+                self.metadata_encoder.localization_column,
+            ]
         return {
-            "model_name": "EfficientNet-V2-S",
+            "model_name": model_config.get("backbone", "auto"),
             "num_classes": model_config.get("num_classes", 7),
             "image_size": self.image_size,
             "device": str(self.device),
             "checkpoint": str(self.checkpoint_path),
             "total_parameters": self.model.get_total_params(),
+            "metadata_enabled": self.metadata_encoder is not None,
+            "metadata_columns": metadata_columns,
         }
 
 
@@ -656,6 +814,7 @@ class EnsemblePredictor:
     def predict(
         self,
         image: Union[str, Path, Image.Image, np.ndarray, bytes],
+        metadata: Optional[Dict[str, Any]] = None,
         aggregation: Literal[
             "mean", "weighted_mean", "geometric_mean", "max"
         ] = "weighted_mean",
@@ -693,6 +852,7 @@ class EnsemblePredictor:
             if use_tta:
                 result = predictor.predict_with_tta(
                     image=image,
+                    metadata=metadata,
                     tta_mode=tta_mode,
                     aggregation=tta_aggregation,
                     use_clahe_tta=use_clahe_tta,
@@ -701,7 +861,11 @@ class EnsemblePredictor:
                     include_disclaimer=False,
                 )
             else:
-                result = predictor.predict(image=image, include_disclaimer=False)
+                result = predictor.predict(
+                    image=image,
+                    metadata=metadata,
+                    include_disclaimer=False,
+                )
 
             # Extract probabilities as array
             probs = np.array([result["probabilities"][cls] for cls in self.class_names])
