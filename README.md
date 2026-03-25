@@ -25,7 +25,7 @@ Dermalyze/
 |-----------|---------|------------|
 | [**Frontend**](frontend/README.md) | Web UI for image upload and results | React, Vite, TypeScript, Tailwind CSS |
 | [**Inference Service**](inference_service/README.md) | Production-ready classification API | FastAPI, PyTorch, uvicorn |
-| [**Training Pipeline**](skin_lesion_classifier/README.md) | Model training and evaluation | PyTorch, EfficientNet (B0-B7), ConvNeXt-Tiny, ResNeSt-101, SE-ResNeXt-101 |
+| [**Training Pipeline**](skin_lesion_classifier/README.md) | Model training and evaluation | PyTorch, EfficientNet (B0-B7), EfficientNetV2 (S/M/L), ConvNeXt-Tiny, ResNeSt-101, SE-ResNeXt-101 |
 
 ## Quick Start
 
@@ -132,6 +132,7 @@ python skin_lesion_classifier/src/prepare_data.py \
 
 ### Model Architectures
 - **EfficientNet family**: B0, B1, B2, B3, B4, B5, B6, B7
+- **EfficientNetV2 family**: V2-S (Small), V2-M (Medium), V2-L (Large) - faster training, better parameter efficiency
 - **ResNet variants**: ResNeSt-101, SE-ResNeXt-101
 - **ConvNeXt-Tiny**: Modern ConvNet architecture
 - **Multi-input models**: Combine image features with patient metadata (age, sex, anatomical site)
@@ -148,6 +149,7 @@ model:
 
 **Recommended sizes by model:**
 - **EfficientNet-B0**: 224 (default) | B3: 300 | B5: 456 | B7: 600
+- **EfficientNetV2-S**: 224-300 | V2-M: 224-384 | V2-L: 300-480 (faster training than B-series)
 - **ResNeSt-101**: 224-384
 - **ConvNeXt-Tiny**: 224-256
 

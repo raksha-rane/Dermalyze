@@ -1,6 +1,6 @@
 # Dermalyze Training Pipeline
 
-ML training and evaluation pipeline for skin lesion classification using EfficientNet, ResNeSt, and ConvNeXt architectures on the HAM10000 dataset.
+ML training and evaluation pipeline for skin lesion classification using EfficientNet, EfficientNetV2, ResNeSt, and ConvNeXt architectures on the HAM10000 dataset.
 
 > ⚠️ **DISCLAIMER**: Educational/research purposes only. Not for medical diagnosis. Consult healthcare professionals for medical advice.
 
@@ -16,7 +16,7 @@ After training models here, copy the best checkpoint to `../inference_service/mo
 
 ## Key Features
 
-- **EfficientNet-B0** with transfer learning
+- **EfficientNet-B0 to B7** and **EfficientNetV2-S/M/L** with transfer learning
 - **Classification heads**: MLP (512→256→7) with BatchNorm & Dropout (0.35)
 - **Augmentation**: Mixup, CutMix, TTA, domain-specific transforms
 - **Training**: Mixed precision (AMP), ModelEMA, cosine annealing, early stopping
@@ -224,7 +224,7 @@ Recommended objective for HAM10000 with imbalance controls: `macro_recall_f1_mea
 After tuning, inspect `outputs/optuna_*/optuna_summary.json` and retrain best config at your full epoch budget.
 
 **Key config options:**
-- `model.backbone`: `efficientnet_b0` or `convnext_tiny` (both use `src/train.py`)
+- `model.backbone`: `efficientnet_b0`, `efficientnetv2_s`, `efficientnetv2_m`, `efficientnetv2_l`, or `convnext_tiny` (all use `src/train.py`)
 - `model.dropout_rate`: 0.35 (regularization)
 - `training.batch_size`: 32
 - `training.epochs`: 40
@@ -246,7 +246,7 @@ python src/evaluate.py \
     --test-csv outputs/run_xxx/test_split.csv \
     --images-dir data/HAM10000_Training/images
 ```
-Supports checkpoints trained with either backbone (`efficientnet_b0` / `convnext_tiny`) via `src/train.py`, including mixed-architecture ensembles.
+Supports checkpoints trained with any backbone (EfficientNet B0-B7, EfficientNetV2 S/M/L, ConvNeXt-Tiny, ResNeSt-101, SE-ResNeXt-101) via `src/train.py`, including mixed-architecture ensembles.
 
 **Config-first evaluation (recommended):**
 `src/evaluate.py` now reads TTA defaults from `config.yaml` (via `evaluation.tta`) so you don't need to pass TTA flags every run.
@@ -375,7 +375,7 @@ python scripts/benchmark.py --num-batches 20
 
 ## Architecture
 
-- **Backbone**: EfficientNet (B0-B7), ResNeSt-101, SE-ResNeXt-101, or ConvNeXt-Tiny (ImageNet pretrained)
+- **Backbone**: EfficientNet (B0-B7), EfficientNetV2 (S/M/L), ResNeSt-101, SE-ResNeXt-101, or ConvNeXt-Tiny (ImageNet pretrained)
 - **Classifier**: MLP (512→256→7) with BatchNorm & Dropout (0.3)
 - **Loss**: Cross-Entropy / Focal / Label Smoothing with class weights
 - **Optimizer**: AdamW (lr=0.00025, weight_decay=0.02)
