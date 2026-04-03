@@ -27,14 +27,14 @@ This document explains all supported parameters in `config.yaml`, including vali
 ### `data.val_size`
 
 - **Type:** float
-- **Default:** `0.20`
+- **Default:** `0.15`
 - **Description:** Validation fraction.
 - **Notes:** In `use_stratified_group_kfold: true` mode, `val_size` is ignored.
 
 ### `data.test_size`
 
 - **Type:** float
-- **Default:** `0.20`
+- **Default:** `0.15`
 - **Description:** Test fraction.
 - **Notes:** If `> 0`, a holdout test set is created before k-fold split.
 
@@ -100,6 +100,48 @@ This document explains all supported parameters in `config.yaml`, including vali
     - Valid values: back, lower extremity, trunk, upper extremity, head/neck, chest, abdomen, face, foot, hand, scalp, ear, neck, genital, acral
 - **Missing Values:** Automatically filled with defaults (age=50, sex=unknown, site=unknown) if columns are present but have null values
 
+### Segmentation-Assisted ROI Crop
+
+### `data.segmentation.enabled`
+
+- **Type:** bool
+- **Default:** `false`
+- **Description:** Enables lesion ROI cropping using segmentation masks before image transforms.
+
+### `data.segmentation.masks_dir`
+
+- **Type:** string (path)
+- **Default:** `data/HAM10000_Segmentations`
+- **Description:** Directory containing segmentation mask files.
+
+### `data.segmentation.required`
+
+- **Type:** bool
+- **Default:** `true`
+- **Description:** If true, every sample must have a mask; missing masks raise an error.
+- **Notes:** If false, samples without masks fall back to uncropped images.
+
+### `data.segmentation.mask_threshold`
+
+- **Type:** int
+- **Default:** `10`
+- **Description:** Threshold used to binarize grayscale masks (`mask > threshold`).
+
+### `data.segmentation.crop_margin`
+
+- **Type:** float
+- **Default:** `0.10`
+- **Description:** Margin added around lesion bounding box as a fraction of lesion size.
+
+### `data.segmentation.filename_suffixes`
+
+- **Type:** list[string]
+- **Default:** `["", "_segmentation", "_mask"]`
+- **Description:** Candidate suffixes used to resolve mask filenames.
+- **Example resolution order:** `ISIC_001.png`, `ISIC_001_segmentation.png`, `ISIC_001_mask.png` (and jpg/jpeg variants).
+- **Used by:** `src/train.py` and `src/evaluate.py`
+- **CLI overrides (evaluation):** `--masks-dir`, `--use-segmentation-roi-crop`, `--segmentation-mask-threshold`, `--segmentation-crop-margin`, `--segmentation-required`, `--segmentation-mask-suffixes`
+
 ---
 
 ## `model`
@@ -126,7 +168,7 @@ This document explains all supported parameters in `config.yaml`, including vali
 **Supported Backbones:**
 
 | Family | Model | Config Value | Accepted Aliases | Feature Dim |
-|--------|-------|--------------|------------------|-------------|
+| -------- | ------- | -------------- | ------------------ | ------------- |
 | **EfficientNet** | B0 | `efficientnet_b0` | `efficientnet`, `efficientnet-b0` | 1280 |
 | EfficientNet | B1 | `efficientnet_b1` | `efficientnet-b1` | 1280 |
 | EfficientNet | B2 | `efficientnet_b2` | `efficientnet-b2` | 1408 |
@@ -145,7 +187,7 @@ This document explains all supported parameters in `config.yaml`, including vali
 **Performance & Resource Requirements:**
 
 | Backbone | Recommended `image_size` | GPU Memory | Speed | Notes |
-|----------|-------------------------|------------|-------|-------|
+| ---------- | ------------------------- | ------------ | ------- | ------- |
 | EfficientNet-B0 | 224 | 6-8GB | Fastest | Good baseline |
 | EfficientNet-B1 | 240 | 6-8GB | Fast | +5% params vs B0 |
 | EfficientNet-B2 | 260 | 8-10GB | Fast | Balanced |
@@ -350,7 +392,7 @@ This document explains all supported parameters in `config.yaml`, including vali
 ### `training.cutmix_prob`
 
 - **Type:** float
-- **Default:** `0.5`
+- **Default:** `0.15`
 - **Description:** Conditional probability of CutMix vs Mixup when mix branch is used.
 
 ### Scheduler
@@ -376,7 +418,7 @@ This document explains all supported parameters in `config.yaml`, including vali
 ### `training.ema.enabled`
 
 - **Type:** bool
-- **Default:** `false`
+- **Default:** `true`
 
 ### `training.ema.decay`
 
@@ -455,7 +497,7 @@ These values are read by `src/evaluate.py` as defaults. CLI args override them.
 ## `evaluation.tta.use_tta`
 
 - **Type:** bool
-- **Default:** `true`  
+- **Default:** `false`
 
 ## `evaluation.tta.mode`
 
@@ -476,7 +518,7 @@ These values are read by `src/evaluate.py` as defaults. CLI args override them.
 ## `evaluation.tta.use_clahe_tta`
 
 - **Type:** bool
-- **Default:** `true`  
+- **Default:** `false`
 - **Requirement:** OpenCV installed (`opencv-python-headless`).
 
 ## `evaluation.tta.clahe_clip_limit`

@@ -30,14 +30,17 @@ Aliases (for example `efficientnet`, `convnext`, `resnest-101`) are resolved in 
 
 ## Current Default Configuration (config.yaml)
 
-- `model.backbone: efficientnet_b3`
-- `model.image_size: 300`
+- `model.backbone: efficientne` (set this to a supported key such as `resnest_101` before training)
+- `model.image_size: 224`
 - `data.use_metadata: true`
+- `data.segmentation.enabled: false`
+- `data.segmentation.required: true`
+- `data.segmentation.masks_dir: data/HAM10000_Segmentations`
 - `training.epochs: 40` with two-stage schedule (`stage1_epochs: 5`, `stage2_epochs: 35`)
 - `training.use_weighted_sampling: true`
 - `loss.type: focal`
 - `loss.class_weight_power: 0.0`
-- `evaluation.tta.use_tta: true`, `mode: full`, `aggregation: mean`, `use_clahe_tta: true`
+- `evaluation.tta.use_tta: false`, `mode: full`, `aggregation: mean`, `use_clahe_tta: false`
 
 See `config.md` for full field reference.
 
@@ -51,6 +54,10 @@ data/
     images/
     ground_truth.csv
     metadata.csv
+  HAM10000_Segmentations/
+    ISIC_XXXX.png
+    ISIC_XXXX_segmentation.png
+    ISIC_XXXX_mask.png
   HAM10000_Val/
     images/
     ground_truth.csv
@@ -60,6 +67,8 @@ data/
 ```
 
 `ground_truth.csv` must include one-hot class columns: `MEL,NV,BCC,AKIEC,BKL,DF,VASC`.
+
+Segmentation directory is optional unless `data.segmentation.required: true`.
 
 ## Setup
 
@@ -118,6 +127,19 @@ Basic run:
 python src/train.py --config config.yaml
 ```
 
+Enable segmentation ROI crop in `config.yaml`:
+
+```yaml
+data:
+  segmentation:
+    enabled: true
+    masks_dir: data/HAM10000_Segmentations
+    required: true
+    mask_threshold: 10
+    crop_margin: 0.10
+    filename_suffixes: ["", "_segmentation", "_mask"]
+```
+
 Resume:
 
 ```bash
@@ -169,6 +191,20 @@ python src/evaluate.py \
   --test-csv outputs/run_xxx/test_split.csv \
   --images-dir data/HAM10000_Training/images \
   --use-tta --tta-mode full --tta-aggregation mean --use-clahe-tta
+```
+
+Evaluation with segmentation ROI crop via CLI:
+
+```bash
+python src/evaluate.py \
+  --checkpoint outputs/run_xxx/checkpoint_best.pt \
+  --test-csv outputs/run_xxx/test_split.csv \
+  --images-dir data/HAM10000_Training/images \
+  --masks-dir data/HAM10000_Segmentations \
+  --use-segmentation-roi-crop \
+  --segmentation-required \
+  --segmentation-mask-threshold 10 \
+  --segmentation-crop-margin 0.10
 ```
 
 Evaluation output directory (default: `evaluation_results`) includes:
