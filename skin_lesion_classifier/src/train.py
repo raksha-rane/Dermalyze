@@ -488,6 +488,8 @@ def train_one_epoch(
 
     for batch_idx, batch in enumerate(pbar):
         images, targets, metadata = _parse_batch(batch)
+        optimizer_stepped = False
+
         # Ensure tensors are contiguous before transfer for MPS
         if not images.is_contiguous():
             images = images.contiguous()
@@ -549,11 +551,16 @@ def train_one_epoch(
                     scaler.unscale_(optimizer)
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
                 if scaler is not None:
+                    scale_before = scaler.get_scale()
                     scaler.step(optimizer)
                     scaler.update()
+                    # GradScaler can skip optimizer.step() on overflow; avoid advancing
+                    # EMA/scheduler when no parameter update actually happened.
+                    optimizer_stepped = scaler.get_scale() >= scale_before
                 else:
                     optimizer.step()
-                if ema is not None:
+                    optimizer_stepped = True
+                if ema is not None and optimizer_stepped:
                     ema.update(model)
         else:
             outputs = _forward_model(model, images, metadata)
@@ -574,6 +581,7 @@ def train_one_epoch(
             ) == len(train_loader):
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
                 optimizer.step()
+                optimizer_stepped = True
                 if ema is not None:
                     ema.update(model)
 
@@ -582,11 +590,12 @@ def train_one_epoch(
                     torch.mps.synchronize()
 
         # Update learning rate if using OneCycleLR (only after optimizer step)
-        if (batch_idx + 1) % gradient_accumulation_steps == 0 or (batch_idx + 1) == len(
-            train_loader
+        if (
+            optimizer_stepped
+            and scheduler is not None
+            and isinstance(scheduler, OneCycleLR)
         ):
-            if scheduler is not None and isinstance(scheduler, OneCycleLR):
-                scheduler.step()
+            scheduler.step()
 
         # Update metrics (scale loss back up for reporting)
         preds = torch.argmax(outputs, dim=1)
