@@ -10,8 +10,14 @@ For each trial it:
 2) Samples hyperparameters from a HAM10000-focused search space
 3) Writes a per-trial config
 4) Runs training as a subprocess
-5) Reads outputs/<study>/trial_xxxxx/training_history.json
+5) Runs evaluation and reads outputs/<study>/trial_xxxxx/optuna_eval/evaluation_metrics.json
 6) Returns objective metric to Optuna
+
+Key improvements in this version:
+- Aligns best checkpoint selection metric with Optuna objective metric
+- Passes explicit TTA/segmentation flags to evaluation to avoid config drift
+- Validates CSV compatibility for metadata training
+- Configurable EMA save_best override
 """
 
 from __future__ import annotations
@@ -50,8 +56,12 @@ def ensure_existing_data_paths(
     Ensure configured data paths exist, with safe fallback to raw HAM10000 paths.
 
     This helps when config points to balanced_19k files that were not generated yet.
+    
+    For metadata training (use_metadata: true), validates that the CSV contains
+    required columns and falls back to labels_with_metadata.csv if needed.
     """
     data_cfg = config.setdefault("data", {})
+    use_metadata = bool(data_cfg.get("use_metadata", False))
 
     labels_csv = Path(str(data_cfg.get("labels_csv", "data/HAM10000/labels.csv")))
     images_dir = Path(str(data_cfg.get("images_dir", "data/HAM10000/images")))
@@ -59,15 +69,26 @@ def ensure_existing_data_paths(
     labels_abs = labels_csv if labels_csv.is_absolute() else project_root / labels_csv
     images_abs = images_dir if images_dir.is_absolute() else project_root / images_dir
 
+    # Define fallback paths
     fallback_labels = project_root / "data/HAM10000/labels.csv"
+    fallback_metadata_labels = project_root / "data/HAM10000/labels_with_metadata.csv"
     fallback_images = project_root / "data/HAM10000/images"
 
-    if not labels_abs.exists() and fallback_labels.exists():
-        print(
-            f"[tune_optuna] labels_csv not found at {labels_csv}. "
-            f"Falling back to {fallback_labels.relative_to(project_root)}"
-        )
-        data_cfg["labels_csv"] = str(fallback_labels.relative_to(project_root))
+    # Check and fallback for labels CSV
+    if not labels_abs.exists():
+        # If metadata is required, try metadata-specific fallback first
+        if use_metadata and fallback_metadata_labels.exists():
+            print(
+                f"[tune_optuna] labels_csv not found at {labels_csv}. "
+                f"Using metadata-compatible fallback: {fallback_metadata_labels.relative_to(project_root)}"
+            )
+            data_cfg["labels_csv"] = str(fallback_metadata_labels.relative_to(project_root))
+        elif fallback_labels.exists():
+            print(
+                f"[tune_optuna] labels_csv not found at {labels_csv}. "
+                f"Falling back to {fallback_labels.relative_to(project_root)}"
+            )
+            data_cfg["labels_csv"] = str(fallback_labels.relative_to(project_root))
 
     if not images_abs.exists() and fallback_images.exists():
         print(
@@ -96,6 +117,41 @@ def ensure_existing_data_paths(
             f"{final_images_abs}. Provide a valid path in config."
         )
 
+    # Validate metadata requirements
+    if use_metadata:
+        try:
+            import pandas as pd
+            df = pd.read_csv(final_labels_abs, nrows=1)
+            required_columns = {"age_approx", "sex", "anatom_site"}
+            missing_columns = required_columns - set(df.columns)
+            
+            if missing_columns:
+                # Try to find labels_with_metadata.csv as fallback
+                if fallback_metadata_labels.exists() and final_labels_abs != fallback_metadata_labels:
+                    print(
+                        f"[tune_optuna] WARNING: Current CSV missing metadata columns {missing_columns}. "
+                        f"Switching to {fallback_metadata_labels.relative_to(project_root)}"
+                    )
+                    data_cfg["labels_csv"] = str(fallback_metadata_labels.relative_to(project_root))
+                    # Re-validate the fallback
+                    df_fallback = pd.read_csv(fallback_metadata_labels, nrows=1)
+                    missing_fallback = required_columns - set(df_fallback.columns)
+                    if missing_fallback:
+                        raise ValueError(
+                            f"use_metadata=true but labels CSV is missing required columns: {missing_fallback}. "
+                            f"Run: python src/prepare_data.py --data-dir <data-dir> --include-metadata"
+                        )
+                else:
+                    raise ValueError(
+                        f"use_metadata=true but labels CSV is missing required columns: {missing_columns}. "
+                        f"Run: python src/prepare_data.py --data-dir <data-dir> --include-metadata"
+                    )
+        except ImportError:
+            print(
+                "[tune_optuna] WARNING: pandas not available for CSV validation. "
+                "Skipping metadata column check."
+            )
+
     return config
 
 
@@ -113,7 +169,10 @@ def _ensure_sections(
 
 
 def apply_ham10000_search_space(
-    config: Dict[str, Any], trial: optuna.Trial
+    config: Dict[str, Any], 
+    trial: optuna.Trial, 
+    objective_metric: str = "macro_recall_f1_mean",
+    override_ema_save_best: Optional[bool] = None,
 ) -> Dict[str, Any]:
     model_cfg, train_cfg, loss_cfg, scheduler_cfg, ema_cfg = _ensure_sections(config)
     data_cfg = config.setdefault("data", {})
@@ -194,10 +253,22 @@ def apply_ham10000_search_space(
     ema_cfg["enabled"] = True
     ema_cfg["decay"] = trial.suggest_float("ema_decay", 0.995, 0.9999)
     ema_cfg["use_for_eval"] = True
-    ema_cfg["save_best"] = True
+    # Only override save_best if explicitly requested, otherwise respect base config
+    if override_ema_save_best is not None:
+        ema_cfg["save_best"] = override_ema_save_best
 
-    # Configure best checkpoint selection to use macro_recall_f1_mean
-    train_cfg["best_checkpoint_metric"] = "macro_recall_f1_mean"
+    # Configure best checkpoint selection to align with Optuna objective
+    # Map objective metric to appropriate checkpoint metric name
+    metric_mapping = {
+        "macro_recall": "macro_recall",
+        "macro_f1": "macro_f1",
+        "weighted_recall": "weighted_recall",
+        "weighted_f1": "weighted_f1",
+        "macro_recall_f1_mean": "macro_recall_f1_mean",
+    }
+    train_cfg["best_checkpoint_metric"] = metric_mapping.get(
+        objective_metric, "macro_recall_f1_mean"
+    )
     train_cfg["best_checkpoint_mode"] = "max"
 
     return config
@@ -272,6 +343,12 @@ def run_trial_evaluation(
     trial_config: Dict[str, Any],
     verbose_subprocess: bool,
 ) -> Dict[str, Any]:
+    """
+    Run evaluation on a trial's best checkpoint with explicit configuration.
+    
+    Extracts TTA and segmentation settings from trial_config and passes them
+    as explicit CLI flags to avoid config drift issues.
+    """
     checkpoint_path = trial_output_dir / "checkpoint_best.pt"
     val_csv_path = trial_output_dir / "val_split.csv"
     eval_output_dir = trial_output_dir / "optuna_eval"
@@ -300,6 +377,58 @@ def run_trial_evaluation(
         "--output",
         str(eval_output_dir),
     ]
+
+    # Extract and pass explicit TTA settings to avoid config drift
+    eval_config = trial_config.get("evaluation", {})
+    tta_config = eval_config.get("tta", {})
+    
+    use_tta = bool(tta_config.get("use_tta", False))
+    if use_tta:
+        command.extend(["--use-tta"])
+        tta_mode = str(tta_config.get("mode", "medium"))
+        command.extend(["--tta-mode", tta_mode])
+        tta_aggregation = str(tta_config.get("aggregation", "mean"))
+        command.extend(["--tta-aggregation", tta_aggregation])
+        
+        use_clahe_tta = bool(tta_config.get("use_clahe_tta", False))
+        if use_clahe_tta:
+            command.extend(["--use-clahe-tta"])
+            clahe_clip_limit = tta_config.get("clahe_clip_limit")
+            if clahe_clip_limit is not None:
+                command.extend(["--clahe-clip-limit", str(clahe_clip_limit)])
+            clahe_grid_size = tta_config.get("clahe_grid_size")
+            if clahe_grid_size is not None:
+                command.extend(["--clahe-grid-size", str(clahe_grid_size)])
+    else:
+        command.extend(["--no-use-tta"])
+    
+    # Extract and pass explicit segmentation settings
+    data_config = trial_config.get("data", {})
+    seg_config = data_config.get("segmentation", {})
+    
+    use_segmentation = bool(seg_config.get("use_segmentation_roi_crop", False))
+    if use_segmentation:
+        command.extend(["--use-segmentation-roi-crop"])
+        
+        mask_threshold = seg_config.get("mask_threshold")
+        if mask_threshold is not None:
+            command.extend(["--segmentation-mask-threshold", str(mask_threshold)])
+        
+        crop_margin = seg_config.get("crop_margin")
+        if crop_margin is not None:
+            command.extend(["--segmentation-crop-margin", str(crop_margin)])
+        
+        required = seg_config.get("required", False)
+        if required:
+            command.extend(["--segmentation-required"])
+        else:
+            command.extend(["--no-segmentation-required"])
+        
+        mask_suffixes = seg_config.get("mask_suffixes")
+        if mask_suffixes is not None:
+            command.extend(["--segmentation-mask-suffixes"] + list(mask_suffixes))
+    else:
+        command.extend(["--no-use-segmentation-roi-crop"])
 
     if verbose_subprocess:
         print("$", shlex.join(command))
@@ -409,6 +538,16 @@ def main() -> None:
         default=True,
         help="Show Optuna trial-level progress bar",
     )
+    parser.add_argument(
+        "--override-ema-save-best",
+        type=lambda x: x.lower() in ('true', '1', 'yes'),
+        default=None,
+        help=(
+            "Override EMA save_best setting in trial configs. "
+            "If not specified, respects base config setting. "
+            "Use 'true' to force enable, 'false' to force disable."
+        ),
+    )
     args = parser.parse_args()
 
     project_root = args.project_root.resolve()
@@ -429,6 +568,13 @@ def main() -> None:
 
     direction = "maximize"
     sampler = optuna.samplers.TPESampler(seed=args.sampler_seed)
+    # NOTE: MedianPruner is currently inactive because no intermediate metrics are
+    # reported during training. Each trial runs to completion and only returns a
+    # final score. To enable pruning, train.py would need to be modified to:
+    # 1) Write intermediate validation metrics to a file after each epoch
+    # 2) tune_optuna.py reads those metrics and calls trial.report(metric, step)
+    # 3) After reporting, call trial.should_prune() and terminate early if True
+    # This would allow stopping weak trials early and save significant compute time.
     pruner = optuna.pruners.MedianPruner(n_startup_trials=5, n_warmup_steps=0)
 
     study = optuna.create_study(
@@ -450,7 +596,12 @@ def main() -> None:
         trial_config_path = trial_configs_dir / f"trial_{trial.number:05d}.yaml"
 
         trial_config = json.loads(json.dumps(base_config))
-        trial_config = apply_ham10000_search_space(trial_config, trial)
+        trial_config = apply_ham10000_search_space(
+            trial_config, 
+            trial, 
+            objective_metric=args.objective_metric,
+            override_ema_save_best=args.override_ema_save_best,
+        )
         write_yaml(trial_config_path, trial_config)
 
         run_trial_training(
