@@ -38,7 +38,7 @@ const LogoutConfirmScreen: React.FC<LogoutConfirmScreenProps> = ({ onConfirm, on
         </div>
 
       <div className="mt-6 text-center">
-        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-relaxed">
+        <p className="text-[10px] font-bold text-slate-700 uppercase tracking-widest leading-relaxed drop-shadow-sm">
           Dermalyze Session Management
         </p>
       </div>

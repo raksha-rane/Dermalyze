@@ -7,6 +7,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import AppLayout from './components/AppLayout';
 
 // ── Code-split screen imports ─────────────────────────────────────────────────
+const LandingScreen        = lazy(() => import('./components/LandingScreen'));
 const LoginScreen          = lazy(() => import('./components/LoginScreen'));
 const SignupScreen         = lazy(() => import('./components/SignupScreen'));
 const ForgotPasswordScreen = lazy(() => import('./components/ForgotPasswordScreen'));
@@ -46,7 +47,7 @@ export const ROUTES = {
 } as const;
 
 const PUBLIC_ROUTES: string[] = [
-  '/login', '/signup', '/forgot-password', '/reset-password', '/email-verification',
+  '/', '/login', '/signup', '/forgot-password', '/reset-password', '/email-verification',
 ];
 
 const SIGNUP_EMAIL_KEY = 'dermalyze_signup_email';
@@ -211,6 +212,14 @@ const App: React.FC = () => {
         )}
         <Suspense fallback={<PageLoader />}>
           <Routes>
+            {/* ── Landing ── */}
+            <Route path="/" element={
+              <LandingScreen
+                onNavigateToLogin={() => navigate(ROUTES.login)}
+                onNavigateToSignup={() => navigate(ROUTES.signup)}
+              />
+            } />
+
             {/* ── Public ── */}
             <Route path={ROUTES.login} element={
               <LoginScreen
@@ -349,8 +358,7 @@ const App: React.FC = () => {
             } />
 
             {/* Fallbacks */}
-            <Route path="/"  element={<Navigate to={ROUTES.login} replace />} />
-            <Route path="*"  element={<Navigate to={ROUTES.login} replace />} />
+            <Route path="*"  element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>
 

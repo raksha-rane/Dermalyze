@@ -76,32 +76,36 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({
   // Fetch all analytics data for charts
   useEffect(() => {
     const fetchAnalytics = async () => {
-      if (!userId) {
-        setAnalyticsLoading(false);
-        return;
-      }
-
-      setAnalyticsLoading(true);
       try {
+        setAnalyticsLoading(true);
+
+        // Get user directly from auth (same pattern as dashboard stats)
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          setAnalyticsData([]);
+          setAnalyticsLoading(false);
+          return;
+        }
+
         const { data, error } = await supabase
           .from('analyses')
           .select('id, created_at, predicted_class_id, predicted_class_name, confidence')
-          .eq('user_id', userId)
+          .eq('user_id', user.id)
           .order('created_at', { ascending: false });
 
         if (error) throw error;
 
-        if (data) {
-          setAnalyticsData(data.map((row) => ({
-            id: row.id,
-            createdAt: row.created_at,
-            date: '',
-            time: '',
-            classId: row.predicted_class_id,
-            className: row.predicted_class_name,
-            confidence: row.confidence,
-          })));
-        }
+        const mappedData = (data ?? []).map((row) => ({
+          id: row.id,
+          createdAt: row.created_at,
+          date: '',
+          time: '',
+          classId: row.predicted_class_id,
+          className: row.predicted_class_name,
+          confidence: row.confidence,
+        }));
+
+        setAnalyticsData(mappedData);
       } catch (err) {
         console.error('Failed to fetch analytics data:', err);
         setAnalyticsData([]);
@@ -111,7 +115,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({
     };
 
     fetchAnalytics();
-  }, [userId]);
+  }, []); // Run once on mount, user is fetched inside
 
   // Get prediction breakdown data for the selected time period
   const predictionBreakdownData = getPredictionBreakdown(analyticsData, timePeriod);
