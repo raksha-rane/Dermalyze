@@ -1223,6 +1223,15 @@ def train(
 
     model = model.to(device)
 
+    if use_metadata:
+        logger.info(
+            "Metadata fusion dims | image=%s metadata_input=%s metadata_hidden=%s fused=%s",
+            getattr(model, "image_feature_dim", "unknown"),
+            getattr(model, "metadata_dim", "unknown"),
+            getattr(model, "metadata_hidden_dim", "unknown"),
+            getattr(model, "fusion_input_dim", "unknown"),
+        )
+
     ema = ModelEMA(model, decay=ema_decay) if ema_enabled else None
     if ema_enabled:
         logger.info(f"EMA enabled (decay={ema_decay})")

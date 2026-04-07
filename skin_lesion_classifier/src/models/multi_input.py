@@ -47,13 +47,24 @@ class MultiInputClassifier(nn.Module):
         """
         super().__init__()
 
+        if metadata_dim <= 0:
+            raise ValueError(f"metadata_dim must be > 0, got {metadata_dim}")
+        if metadata_hidden_dim <= 0:
+            raise ValueError(
+                f"metadata_hidden_dim must be > 0, got {metadata_hidden_dim}"
+            )
+
         self.image_model = image_model
         self.metadata_dim = metadata_dim
+        self.metadata_hidden_dim = metadata_hidden_dim
         self.num_classes = num_classes
 
         # Get feature dimension from image model
         # The image model should have a 'classifier' attribute we can inspect
         self.image_feature_dim = self._get_image_feature_dim()
+        self.fusion_input_dim = self.image_feature_dim + self.metadata_hidden_dim
+        # Expose fused feature dimension for downstream introspection/logging.
+        self.feature_dim = self.fusion_input_dim
 
         # Metadata MLP
         self.metadata_mlp = nn.Sequential(
@@ -67,10 +78,9 @@ class MultiInputClassifier(nn.Module):
         )
 
         # Fusion classifier
-        fusion_input_dim = self.image_feature_dim + metadata_hidden_dim
         self.fusion_classifier = nn.Sequential(
             nn.Dropout(p=dropout_rate),
-            nn.Linear(fusion_input_dim, fusion_hidden_dim),
+            nn.Linear(self.fusion_input_dim, fusion_hidden_dim),
             nn.BatchNorm1d(fusion_hidden_dim),
             nn.ReLU(inplace=True),
             nn.Dropout(p=dropout_rate),
@@ -173,12 +183,31 @@ class MultiInputClassifier(nn.Module):
             metadata = torch.zeros(
                 batch_size, self.metadata_dim, device=image.device, dtype=image.dtype
             )
+        else:
+            if metadata.ndim != 2:
+                raise RuntimeError(
+                    f"Expected metadata to have shape [B, {self.metadata_dim}], got {tuple(metadata.shape)}"
+                )
+            if metadata.size(1) != self.metadata_dim:
+                raise RuntimeError(
+                    f"Expected metadata dim {self.metadata_dim}, got {metadata.size(1)}"
+                )
 
         # Process metadata
         metadata_features = self.metadata_mlp(metadata)
+        if metadata_features.size(1) != self.metadata_hidden_dim:
+            raise RuntimeError(
+                "Metadata projection dim mismatch: "
+                f"expected {self.metadata_hidden_dim}, got {metadata_features.size(1)}"
+            )
 
         # Fuse features
         fused_features = torch.cat([image_features, metadata_features], dim=1)
+        if fused_features.size(1) != self.fusion_input_dim:
+            raise RuntimeError(
+                "Fusion dim mismatch: "
+                f"expected {self.fusion_input_dim}, got {fused_features.size(1)}"
+            )
 
         # Final classification
         logits = self.fusion_classifier(fused_features)
