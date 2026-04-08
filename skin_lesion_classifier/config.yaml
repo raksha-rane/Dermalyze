@@ -60,7 +60,7 @@ training:
   stage1_epochs: 2
   stage1_lr: 0.00007168802082137062
   stage1_weight_decay: 0.005645066779546339
-  stage2_epochs: 27
+  stage2_epochs: 43
   stage_epoch_mode: fit_total
   stage2_lr: 0.000688152438667204
   stage2_weight_decay: 0.022225433823808757

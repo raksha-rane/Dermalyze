@@ -1177,6 +1177,10 @@ def train(
     stage1_epochs = int(train_config.get("stage1_epochs", 0) or 0)
     stage2_epochs_cfg = train_config.get("stage2_epochs", None)
     stage_epoch_mode = str(train_config.get("stage_epoch_mode", "fit_total")).lower()
+    if stage_epoch_mode not in {"fit_total", "explicit"}:
+        raise ValueError(
+            "training.stage_epoch_mode must be either 'fit_total' or 'explicit'"
+        )
     if stage_epoch_mode != "explicit" and stage1_epochs > epochs:
         logger.warning(
             "training.stage1_epochs=%s exceeds training.epochs=%s in fit_total mode; clamping stage1_epochs to epochs.",
@@ -1202,12 +1206,25 @@ def train(
     if stage_epoch_mode != "explicit" and stage2_epochs_cfg is not None:
         configured_total = stage1_epochs + int(stage2_epochs_cfg)
         if configured_total != epochs:
-            logger.warning(
-                "Ignoring stage2_epochs=%s to respect epochs=%s (stage_epoch_mode=fit_total). "
-                "Set training.stage_epoch_mode=explicit to use stage1+stage2 exactly.",
-                stage2_epochs_cfg,
-                epochs,
+            raise ValueError(
+                "Conflicting stage schedule: stage_epoch_mode='fit_total' uses "
+                "training.epochs as total, but stage1_epochs + stage2_epochs = %s "
+                "while epochs = %s. Set training.stage_epoch_mode='explicit' to "
+                "honor stage1+stage2, or adjust stage2_epochs to %s."
+                % (
+                    configured_total,
+                    epochs,
+                    max(0, epochs - stage1_epochs),
+                )
             )
+
+    logger.info(
+        "Resolved stage schedule | mode=%s | stage1_epochs=%d | stage2_epochs=%d | total_epochs=%d",
+        stage_epoch_mode,
+        stage1_epochs,
+        stage2_epochs,
+        total_epochs,
+    )
 
     stage1_lr = train_config.get("stage1_lr", lr)
     stage2_lr = train_config.get("stage2_lr", lr)
