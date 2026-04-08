@@ -749,6 +749,7 @@ def validate(
     criterion: nn.Module,
     device: torch.device,
     epoch: int = 0,
+    num_classes: int = 7,
 ) -> Dict[str, float]:
     """
     Validate the model.
@@ -759,6 +760,7 @@ def validate(
         criterion: Loss function
         device: Device to validate on
         epoch: Current epoch number
+        num_classes: Total number of classes (used for stable macro averaging)
 
     Returns:
         Dictionary of validation metrics including:
@@ -806,8 +808,13 @@ def validate(
     all_targets = np.array(metrics.all_targets)
     
     if len(all_preds) > 0 and len(all_targets) > 0:
+        labels = list(range(num_classes))
         precision, recall, f1, _ = precision_recall_fscore_support(
-            all_targets, all_preds, average='macro', zero_division=0
+            all_targets,
+            all_preds,
+            labels=labels,
+            average='macro',
+            zero_division=0,
         )
         basic_metrics['macro_precision'] = float(precision)
         basic_metrics['macro_recall'] = float(recall)
@@ -1753,6 +1760,7 @@ def train(
                     criterion=criterion,
                     device=device,
                     epoch=epoch + 1,
+                    num_classes=int(model_config.get("num_classes", 7)),
                 )
                 ema.restore(model)
             else:
@@ -1762,6 +1770,7 @@ def train(
                     criterion=criterion,
                     device=device,
                     epoch=epoch + 1,
+                    num_classes=int(model_config.get("num_classes", 7)),
                 )
 
             if scheduler is not None and not isinstance(scheduler, OneCycleLR):
