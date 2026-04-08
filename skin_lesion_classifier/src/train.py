@@ -1386,33 +1386,67 @@ def train(
     logger.info(f"Trainable parameters: {model.get_trainable_params():,}")
 
     # Create loss function
+    loss_type = str(loss_config.get("type", "focal")).strip().lower()
 
     # Handle alpha parameter - use manual values if provided, otherwise use computed class weights
-    focal_alpha = None
+    focal_alpha: Optional[torch.Tensor] = None
     if "alpha" in loss_config and loss_config["alpha"] is not None:
         focal_alpha = torch.tensor(loss_config["alpha"], dtype=torch.float32)
         logger.info(f"Using manual alpha weights: {focal_alpha.tolist()}")
     else:
         focal_alpha = class_weights
-        if focal_alpha is not None:
-            logger.info(f"Using computed class weights: {focal_alpha.tolist()}")
+        if loss_type == "focal":
+            if class_weight_power > 0.5:
+                logger.warning(
+                    "Focal loss is using class-weight alpha with class_weight_power=%.3f. "
+                    "This can over-correct minority classes; consider values around 0.3-0.5.",
+                    class_weight_power,
+                )
+            if train_config.get("use_weighted_sampling", True) and class_weight_power > 0.0:
+                logger.warning(
+                    "Both weighted sampling and focal alpha weighting are active "
+                    "(class_weight_power=%.3f). This can over-correct class imbalance.",
+                    class_weight_power,
+                )
+        logger.info(f"Using computed class weights: {focal_alpha.tolist()}")
 
     criterion = get_loss_function(
-        loss_type=loss_config.get("type", "focal"),
-        class_weights=focal_alpha if loss_config.get("type") != "focal" else None,
+        loss_type=loss_type,
+        class_weights=focal_alpha if loss_type != "focal" else None,
         label_smoothing=loss_config.get("label_smoothing", 0.1),
         focal_gamma=loss_config.get("gamma", loss_config.get("focal_gamma", 2.0)),
-        focal_alpha=focal_alpha if loss_config.get("type") == "focal" else None,
+        focal_alpha=focal_alpha if loss_type == "focal" else None,
     )
 
     # Create learning rate scheduler config
     scheduler_config = train_config.get("scheduler", {})
     scheduler_type = scheduler_config.get("type", "cosine")
 
-    def build_scheduler(optimizer: torch.optim.Optimizer, stage_epochs: int):
+    def _build_cosine_scheduler(optimizer: torch.optim.Optimizer):
+        return CosineAnnealingWarmRestarts(
+            optimizer,
+            T_0=scheduler_config.get("T_0", 10),
+            T_mult=scheduler_config.get("T_mult", 2),
+            eta_min=scheduler_config.get("eta_min", 1e-6),
+        )
+
+    def build_scheduler(
+        optimizer: torch.optim.Optimizer,
+        stage_epochs: int,
+        stage_name: str,
+    ):
         if stage_epochs <= 0:
             return None
         if scheduler_type == "onecycle":
+            # Very short Stage 1 runs make OneCycleLR rush through warmup+decay too quickly.
+            # Use cosine per epoch for Stage 1 warmup stability in this case.
+            if stage_name == "stage1" and stage_epochs <= 2:
+                logger.warning(
+                    "Stage 1 has %d epochs with scheduler=onecycle; "
+                    "falling back to cosine scheduler for Stage 1 stability.",
+                    stage_epochs,
+                )
+                return _build_cosine_scheduler(optimizer)
             steps_per_epoch = max(
                 1,
                 math.ceil(len(train_loader) / max(gradient_accumulation_steps, 1)),
@@ -1425,12 +1459,7 @@ def train(
                 pct_start=scheduler_config.get("warmup_pct", 0.1),
                 anneal_strategy="cos",
             )
-        return CosineAnnealingWarmRestarts(
-            optimizer,
-            T_0=scheduler_config.get("T_0", 10),
-            T_mult=scheduler_config.get("T_mult", 2),
-            eta_min=scheduler_config.get("eta_min", 1e-6),
-        )
+        return _build_cosine_scheduler(optimizer)
 
     def build_optimizer_and_scheduler(
         stage_lr: float,
@@ -1447,7 +1476,8 @@ def train(
             weight_decay=stage_weight_decay,
             betas=(0.9, 0.999),
         )
-        scheduler = build_scheduler(optimizer, stage_epochs)
+        stage_name = "stage1" if only_classifier else "stage2"
+        scheduler = build_scheduler(optimizer, stage_epochs, stage_name=stage_name)
         return optimizer, scheduler
 
     # Initialize gradient scaler for mixed precision
@@ -1652,7 +1682,7 @@ def train(
                 optimizer=optimizer,
                 device=device,
                 scaler=scaler,
-                scheduler=scheduler if scheduler_type == "onecycle" else None,
+                scheduler=scheduler,
                 epoch=epoch + 1,
                 use_amp=use_amp,
                 freeze_backbone=freeze_backbone,
@@ -1682,7 +1712,7 @@ def train(
                     epoch=epoch + 1,
                 )
 
-            if scheduler is not None and scheduler_type != "onecycle":
+            if scheduler is not None and not isinstance(scheduler, OneCycleLR):
                 scheduler.step()
 
             epoch_time = time.time() - epoch_start
