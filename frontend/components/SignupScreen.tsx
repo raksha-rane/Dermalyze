@@ -8,6 +8,7 @@ import { friendlyAuthError } from '../lib/authErrors';
 
 interface SignupScreenProps {
   onNavigateToLogin: () => void;
+  onNavigateToHome: () => void;
   onSignupSuccess?: (email: string) => void;
 }
 
@@ -15,7 +16,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 type FieldKey = 'email' | 'password' | 'confirmPassword';
 
-const SignupScreen: React.FC<SignupScreenProps> = ({ onNavigateToLogin, onSignupSuccess }) => {
+const SignupScreen: React.FC<SignupScreenProps> = ({ onNavigateToLogin, onNavigateToHome, onSignupSuccess }) => {
   const [name,            setName]            = useState('');
   const [email,           setEmail]           = useState('');
   const [password,        setPassword]        = useState('');
@@ -134,7 +135,7 @@ const SignupScreen: React.FC<SignupScreenProps> = ({ onNavigateToLogin, onSignup
         {/* Header */}
         <header className="w-full bg-white border-b border-slate-200 shadow-sm">
           <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
+            <button onClick={onNavigateToHome} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
               <div className="w-11 h-11 bg-teal-600 rounded-xl flex items-center justify-center shadow-sm">
                 <ShieldCheckIcon className="w-6 h-6 text-white" />
               </div>
@@ -142,6 +143,20 @@ const SignupScreen: React.FC<SignupScreenProps> = ({ onNavigateToLogin, onSignup
                 <h1 className="text-xl font-bold text-slate-900 tracking-tight leading-tight">Dermalyze</h1>
                 <p className="text-[9px] text-slate-500 uppercase tracking-wider font-semibold leading-tight">Clinical Decision Support</p>
               </div>
+            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={onNavigateToHome}
+                className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                Home
+              </button>
+              <button
+                onClick={onNavigateToLogin}
+                className="px-4 py-2 text-sm font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded-lg shadow-sm transition-colors"
+              >
+                Sign In
+              </button>
             </div>
           </div>
         </header>
@@ -201,7 +216,7 @@ const SignupScreen: React.FC<SignupScreenProps> = ({ onNavigateToLogin, onSignup
 
       {/* Main Content */}
       <div className="flex-1 flex items-center justify-center px-6 py-12">
-        <div className="w-full max-w-md">
+        <div className="w-full max-w-2xl">
           {/* Signup Card */}
           <div className="bg-white rounded-2xl border border-slate-300 shadow-sm p-10">
             <div className="mb-8">
@@ -221,43 +236,49 @@ const SignupScreen: React.FC<SignupScreenProps> = ({ onNavigateToLogin, onSignup
                 </div>
               )}
 
-              <Input
-                label="Full Name (Optional)"
-                type="text"
-                placeholder="Dr. Jane Smith"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
+              {/* Row 1: Full Name + Email */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <Input
+                  label="Full Name (Optional)"
+                  type="text"
+                  placeholder="Dr. Jane Smith"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                />
 
-              <Input
-                label="Email Address"
-                type="email"
-                placeholder="your.email@example.com"
-                value={email}
-                onChange={(e) => handleEmailChange(e.target.value)}
-                onBlur={() => handleBlur('email')}
-                error={fieldErrors.email || undefined}
-              />
+                <Input
+                  label="Email Address"
+                  type="email"
+                  placeholder="your.email@example.com"
+                  value={email}
+                  onChange={(e) => handleEmailChange(e.target.value)}
+                  onBlur={() => handleBlur('email')}
+                  error={fieldErrors.email || undefined}
+                />
+              </div>
 
-              <Input
-                label="Password"
-                type="password"
-                placeholder="Minimum 12 characters"
-                value={password}
-                onChange={(e) => handlePasswordChange(e.target.value)}
-                onBlur={() => handleBlur('password')}
-                error={fieldErrors.password || undefined}
-              />
+              {/* Row 2: Password + Confirm Password */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <Input
+                  label="Password"
+                  type="password"
+                  placeholder="Minimum 12 characters"
+                  value={password}
+                  onChange={(e) => handlePasswordChange(e.target.value)}
+                  onBlur={() => handleBlur('password')}
+                  error={fieldErrors.password || undefined}
+                />
 
-              <Input
-                label="Confirm Password"
-                type="password"
-                placeholder="Re-enter your password"
-                value={confirmPassword}
-                onChange={(e) => handleConfirmChange(e.target.value)}
-                onBlur={() => handleBlur('confirmPassword')}
-                error={fieldErrors.confirmPassword || undefined}
-              />
+                <Input
+                  label="Confirm Password"
+                  type="password"
+                  placeholder="Re-enter your password"
+                  value={confirmPassword}
+                  onChange={(e) => handleConfirmChange(e.target.value)}
+                  onBlur={() => handleBlur('confirmPassword')}
+                  error={fieldErrors.confirmPassword || undefined}
+                />
+              </div>
 
               <Button type="submit" disabled={loading} className="shadow-sm">
                 {loading ? (

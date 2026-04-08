@@ -225,12 +225,14 @@ const App: React.FC = () => {
               <LoginScreen
                 onNavigateToSignup={() => navigate(ROUTES.signup)}
                 onNavigateToForgotPassword={() => navigate(ROUTES.forgotPassword)}
+                onNavigateToHome={() => navigate('/')}
                 onLoginSuccess={() => navigate(ROUTES.dashboard)}
               />
             } />
             <Route path={ROUTES.signup} element={
               <SignupScreen
                 onNavigateToLogin={() => navigate(ROUTES.login)}
+                onNavigateToHome={() => navigate('/')}
                 onSignupSuccess={(email) => {
                   saveSignupEmail(email);
                   navigate(ROUTES.emailVerification);
@@ -238,15 +240,23 @@ const App: React.FC = () => {
               />
             } />
             <Route path={ROUTES.forgotPassword} element={
-              <ForgotPasswordScreen onNavigateToLogin={() => navigate(ROUTES.login)} />
+              <ForgotPasswordScreen
+                onNavigateToLogin={() => navigate(ROUTES.login)}
+                onNavigateToSignup={() => navigate(ROUTES.signup)}
+                onNavigateToHome={() => navigate('/')}
+              />
             } />
             <Route path={ROUTES.resetPassword} element={
-              <ResetPasswordScreen onPasswordReset={() => navigate(ROUTES.login)} />
+              <ResetPasswordScreen
+                onPasswordReset={() => navigate(ROUTES.login)}
+                onNavigateToHome={() => navigate('/')}
+              />
             } />
             <Route path={ROUTES.emailVerification} element={
               <EmailVerificationScreen
                 email={signupEmail}
                 onNavigateToLogin={() => navigate(ROUTES.login)}
+                onNavigateToHome={() => navigate('/')}
                 onResendEmail={async () => {
                   const email = signupEmail || sessionStorage.getItem(SIGNUP_EMAIL_KEY) || '';
                   if (!email) throw new Error('No email address available to resend to.');

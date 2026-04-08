@@ -9,6 +9,7 @@ import { friendlyAuthError } from '../lib/authErrors';
 interface LoginScreenProps {
   onNavigateToSignup: () => void;
   onNavigateToForgotPassword: () => void;
+  onNavigateToHome: () => void;
   onLoginSuccess: () => void;
 }
 
@@ -40,6 +41,7 @@ function persistLockout(failCount: number, lockedUntil: number): void {
 const LoginScreen: React.FC<LoginScreenProps> = ({
   onNavigateToSignup,
   onNavigateToForgotPassword,
+  onNavigateToHome,
   onLoginSuccess,
 }) => {
   const [email, setEmail] = useState('');
@@ -119,7 +121,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
       {/* Header */}
       <header className="w-full bg-white border-b border-slate-200 shadow-sm">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+          <button onClick={onNavigateToHome} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
             <div className="w-11 h-11 bg-teal-600 rounded-xl flex items-center justify-center shadow-sm">
               <ShieldCheckIcon className="w-6 h-6 text-white" />
             </div>
@@ -127,6 +129,20 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
               <h1 className="text-xl font-bold text-slate-900 tracking-tight leading-tight">Dermalyze</h1>
               <p className="text-[9px] text-slate-500 uppercase tracking-wider font-semibold leading-tight">Clinical Decision Support</p>
             </div>
+          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={onNavigateToHome}
+              className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+            >
+              Home
+            </button>
+            <button
+              onClick={onNavigateToSignup}
+              className="px-4 py-2 text-sm font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded-lg shadow-sm transition-colors"
+            >
+              Create Account
+            </button>
           </div>
         </div>
       </header>
