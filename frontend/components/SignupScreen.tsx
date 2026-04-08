@@ -1,5 +1,6 @@
 
 import React, { useState } from 'react';
+import { ShieldCheckIcon } from '@heroicons/react/24/outline';
 import Input from './ui/Input';
 import Button from './ui/Button';
 import { supabase } from '../lib/supabase';
@@ -129,141 +130,168 @@ const SignupScreen: React.FC<SignupScreenProps> = ({ onNavigateToLogin, onSignup
 
   if (success) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center p-6 sm:p-12">
-        <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-slate-100 p-8 sm:p-10">
-          <div className="text-center">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-green-50 rounded-full mb-5">
-              <svg className="w-8 h-8 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
+      <div className="min-h-screen flex flex-col bg-slate-50">
+        {/* Header */}
+        <header className="w-full bg-white border-b border-slate-200 shadow-sm">
+          <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 bg-teal-600 rounded-xl flex items-center justify-center shadow-sm">
+                <ShieldCheckIcon className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-slate-900 tracking-tight leading-tight">Dermalyze</h1>
+                <p className="text-[9px] text-slate-500 uppercase tracking-wider font-semibold leading-tight">Clinical Decision Support</p>
+              </div>
             </div>
-            <h2 className="text-2xl font-bold tracking-tight text-slate-900 mb-2">
-              Account Created!
-            </h2>
-            <p className="text-slate-500 text-sm mb-2 leading-relaxed">
-              Your account has been created successfully.
-            </p>
-            <p className="text-slate-500 text-sm mb-8 leading-relaxed">
-              Please check your email inbox for a verification link to activate your account before logging in.
-            </p>
-            <Button onClick={onNavigateToLogin}>
-              Go to Login
-            </Button>
+          </div>
+        </header>
+
+        {/* Success Content */}
+        <div className="flex-1 flex items-center justify-center px-6 py-12">
+          <div className="w-full max-w-md">
+            <div className="bg-white rounded-2xl border border-slate-300 shadow-sm p-10">
+              <div className="text-center">
+                <div className="inline-flex items-center justify-center w-16 h-16 bg-emerald-50 rounded-2xl mb-6">
+                  <svg className="w-10 h-10 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+
+                <h2 className="text-2xl font-bold text-slate-900 mb-3">
+                  Account Created Successfully
+                </h2>
+
+                <p className="text-slate-600 mb-6 leading-relaxed">
+                  We've sent a verification email to <strong className="text-slate-900">{email}</strong>. Please check your inbox and click the confirmation link to activate your account.
+                </p>
+
+                <div className="bg-teal-50 border border-teal-200 rounded-xl p-4 mb-8">
+                  <p className="text-sm text-teal-800 leading-relaxed">
+                    <strong>Next step:</strong> Verify your email address before signing in. The link expires in 24 hours.
+                  </p>
+                </div>
+
+                <Button onClick={onNavigateToLogin} className="shadow-sm">
+                  Continue to Sign In
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
-
-        <footer className="mt-12 text-center max-w-sm px-4">
-          <p className="text-[11px] font-medium text-slate-400 uppercase tracking-widest leading-relaxed">
-            Clinical Support Tool. Designed to assist medical professionals.
-          </p>
-        </footer>
       </div>
     );
   }
 
   return (
-    <div className="flex-1 flex flex-col items-center justify-center p-6 sm:p-12">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-slate-100 p-8 sm:p-10">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-12 h-12 bg-teal-50 rounded-xl mb-4">
-            <svg 
-              className="w-6 h-6 text-teal-600" 
-              fill="none" 
-              stroke="currentColor" 
-              viewBox="0 0 24 24" 
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path 
-                strokeLinecap="round" 
-                strokeLinejoin="round" 
-                strokeWidth={2} 
-                d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" 
-              />
-            </svg>
+    <div className="min-h-screen flex flex-col bg-slate-50">
+      {/* Header */}
+      <header className="w-full bg-white border-b border-slate-200 shadow-sm">
+        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 bg-teal-600 rounded-xl flex items-center justify-center shadow-sm">
+              <ShieldCheckIcon className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-slate-900 tracking-tight leading-tight">Dermalyze</h1>
+              <p className="text-[9px] text-slate-500 uppercase tracking-wider font-semibold leading-tight">Clinical Decision Support</p>
+            </div>
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 mb-1">
-            Create Account
-          </h1>
-          <p className="text-slate-500 text-sm">
-            Access our advanced skin lesion classification system
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <div className="flex-1 flex items-center justify-center px-6 py-12">
+        <div className="w-full max-w-md">
+          {/* Signup Card */}
+          <div className="bg-white rounded-2xl border border-slate-300 shadow-sm p-10">
+            <div className="mb-8">
+              <h2 className="text-2xl font-bold text-slate-900 mb-2">Create Account</h2>
+              <p className="text-sm text-slate-600">Set up your dermatology classification workspace</p>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-5">
+              {serverError && (
+                <div className="p-4 bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl">
+                  <div className="flex items-start gap-3">
+                    <svg className="w-5 h-5 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span>{serverError}</span>
+                  </div>
+                </div>
+              )}
+
+              <Input
+                label="Full Name (Optional)"
+                type="text"
+                placeholder="Dr. Jane Smith"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+
+              <Input
+                label="Email Address"
+                type="email"
+                placeholder="your.email@example.com"
+                value={email}
+                onChange={(e) => handleEmailChange(e.target.value)}
+                onBlur={() => handleBlur('email')}
+                error={fieldErrors.email || undefined}
+              />
+
+              <Input
+                label="Password"
+                type="password"
+                placeholder="Minimum 12 characters"
+                value={password}
+                onChange={(e) => handlePasswordChange(e.target.value)}
+                onBlur={() => handleBlur('password')}
+                error={fieldErrors.password || undefined}
+              />
+
+              <Input
+                label="Confirm Password"
+                type="password"
+                placeholder="Re-enter your password"
+                value={confirmPassword}
+                onChange={(e) => handleConfirmChange(e.target.value)}
+                onBlur={() => handleBlur('confirmPassword')}
+                error={fieldErrors.confirmPassword || undefined}
+              />
+
+              <Button type="submit" disabled={loading} className="shadow-sm">
+                {loading ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    Creating account...
+                  </span>
+                ) : 'Create Account'}
+              </Button>
+            </form>
+
+            <div className="mt-8 pt-6 border-t border-slate-200">
+              <p className="text-center text-sm text-slate-600">
+                Already have an account?{' '}
+                <button
+                  onClick={onNavigateToLogin}
+                  disabled={loading}
+                  className="font-semibold text-teal-600 hover:text-teal-700 transition-colors disabled:opacity-50"
+                >
+                  Sign In
+                </button>
+              </p>
+            </div>
+          </div>
+
+          {/* Footer Note */}
+          <p className="mt-8 text-center text-xs text-slate-400 leading-relaxed px-4">
+            By creating an account, you confirm that you are a qualified medical professional and agree to use this system in accordance with professional guidelines.
           </p>
         </div>
-
-        <form onSubmit={handleSubmit} className="space-y-1">
-          {serverError && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-100 text-red-600 text-xs rounded-lg text-center font-medium">
-              {serverError}
-            </div>
-          )}
-          <Input 
-            label="Name (Optional)" 
-            type="text" 
-            placeholder="Enter your full name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-          <Input 
-            label="Email" 
-            type="email" 
-            placeholder="Enter your email id"
-            value={email}
-            onChange={(e) => handleEmailChange(e.target.value)}
-            onBlur={() => handleBlur('email')}
-            error={fieldErrors.email || undefined}
-          />
-          <Input 
-            label="Password" 
-            type="password" 
-            placeholder="••••••••"
-            value={password}
-            onChange={(e) => handlePasswordChange(e.target.value)}
-            onBlur={() => handleBlur('password')}
-            error={fieldErrors.password || undefined}
-          />
-          <Input 
-            label="Confirm Password" 
-            type="password" 
-            placeholder="••••••••"
-            value={confirmPassword}
-            onChange={(e) => handleConfirmChange(e.target.value)}
-            onBlur={() => handleBlur('confirmPassword')}
-            error={fieldErrors.confirmPassword || undefined}
-          />
-          
-          <div className="pt-4">
-            <Button type="submit" disabled={loading}>
-              {loading ? (
-                <span className="flex items-center justify-center gap-2">
-                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
-                  Creating account...
-                </span>
-              ) : 'Create Account'}
-            </Button>
-          </div>
-        </form>
-
-        <div className="mt-8">
-          <button 
-            onClick={onNavigateToLogin}
-            disabled={loading}
-            className="w-full text-sm font-medium text-slate-500 hover:text-teal-600 transition-colors text-center flex items-center justify-center gap-2 disabled:opacity-50"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-            Back to Login
-          </button>
-        </div>
       </div>
-
-      <footer className="mt-12 text-center max-w-sm px-4">
-        <p className="text-[11px] font-medium text-slate-400 uppercase tracking-widest leading-relaxed">
-          Clinical Support Tool. Designed to assist medical professionals.
-        </p>
-      </footer>
     </div>
   );
 };
