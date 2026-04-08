@@ -117,5 +117,6 @@ tmp/
 temp/
 
 # Copilot
+.github/
 CLAUDE.md
 QWEN.md

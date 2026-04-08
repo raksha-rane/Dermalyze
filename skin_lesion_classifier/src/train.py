@@ -1705,6 +1705,8 @@ def train(
 
     stopped = False
     current_epoch = start_epoch
+    stage1_optimizer_state = None  # Will hold Stage 1 optimizer state for transfer
+    stage1_param_groups = None  # Will hold Stage 1 parameter groups for ID matching
 
     # Stage 1: head warmup (optional)
     if stage1_epochs > 0 and current_epoch < stage1_epochs:
@@ -1751,6 +1753,15 @@ def train(
             enable_early_stopping=False,
         )
         current_epoch = stage1_epochs
+        
+        # Extract optimizer state for classifier parameters to preserve momentum
+        # when transitioning to Stage 2 (prevents sudden reset of optimization dynamics)
+        stage1_optimizer_state = optimizer.state_dict()
+        stage1_param_groups = optimizer.param_groups
+        logger.info(
+            "Captured Stage 1 optimizer state for transfer to Stage 2 "
+            "(preserves momentum for classifier parameters)"
+        )
 
     # Stage 2: full fine-tune
     if not stopped and stage2_epochs > 0 and current_epoch < total_epochs:
@@ -1770,6 +1781,50 @@ def train(
             stage2_remaining,
             only_classifier=False,
         )
+        
+        # Transfer optimizer state from Stage 1 for classifier parameters
+        # This preserves momentum buffers and prevents sudden optimization reset
+        if (
+            stage1_optimizer_state is not None
+            and stage1_param_groups is not None
+            and resume_state_target_stage != "stage2"
+        ):
+            try:
+                # Create mapping from Stage 1 parameter data pointers to their indices
+                # PyTorch's state_dict uses parameter indices, not object ids
+                stage1_params = stage1_param_groups[0]['params']
+                stage1_param_data_ptrs = {
+                    p.data.data_ptr(): idx for idx, p in enumerate(stage1_params)
+                }
+                
+                # Find matching classifier parameters in Stage 2 optimizer and transfer state
+                transferred_count = 0
+                stage2_params = optimizer.param_groups[0]['params']
+                for stage2_idx, param in enumerate(stage2_params):
+                    param_ptr = param.data.data_ptr()
+                    # If this parameter was in Stage 1, transfer its state
+                    if param_ptr in stage1_param_data_ptrs:
+                        stage1_idx = stage1_param_data_ptrs[param_ptr]
+                        if stage1_idx in stage1_optimizer_state['state']:
+                            optimizer.state[param] = stage1_optimizer_state['state'][stage1_idx].copy()
+                            transferred_count += 1
+                
+                if transferred_count > 0:
+                    logger.info(
+                        f"Transferred optimizer state for {transferred_count} classifier parameters "
+                        f"from Stage 1 to Stage 2 (preserves momentum)"
+                    )
+                else:
+                    logger.warning(
+                        "No classifier parameter states transferred from Stage 1 "
+                        "(parameters may have changed)"
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "Failed to transfer Stage 1 optimizer state to Stage 2: %s. "
+                    "Continuing with fresh optimizer state.", exc
+                )
+        
         if (
             resume_state_target_stage == "stage2"
             and resume_optimizer_state_dict is not None
