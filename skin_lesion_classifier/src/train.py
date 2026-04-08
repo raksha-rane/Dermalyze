@@ -1134,6 +1134,7 @@ def train(
     weighted_sampling_power = float(
         1.0 if sampling_weight_power_cfg is None else sampling_weight_power_cfg
     )
+    use_weighted_sampling = bool(train_config.get("use_weighted_sampling", True))
     sampling_weight_min_cfg = train_config.get("sampling_weight_min", None)
     weighted_sampling_min_weight = (
         None if sampling_weight_min_cfg is None else float(sampling_weight_min_cfg)
@@ -1258,7 +1259,7 @@ def train(
         image_size=config.get("model", {}).get("image_size", 224),
         augmentation_strength=augmentation_strength_literal,
         augmentation_config=augmentation_config,
-        use_weighted_sampling=train_config.get("use_weighted_sampling", True),
+        use_weighted_sampling=use_weighted_sampling,
         weighted_sampling_power=weighted_sampling_power,
         weighted_sampling_min_weight=weighted_sampling_min_weight,
         weighted_sampling_max_weight=weighted_sampling_max_weight,
@@ -1279,10 +1280,18 @@ def train(
     loss_config = config.get("loss", {})
 
     # Calculate class weights for loss function
-    class_weight_power_cfg = loss_config.get("class_weight_power", 1.0)
-    class_weight_power = float(
-        1.0 if class_weight_power_cfg is None else class_weight_power_cfg
-    )
+    class_weight_power_cfg = loss_config.get("class_weight_power")
+    if class_weight_power_cfg is None:
+        # Safe default: avoid stacking weighted sampling + loss weighting unless explicitly requested.
+        class_weight_power = 0.0 if use_weighted_sampling else 1.0
+        logger.info(
+            "loss.class_weight_power not set; defaulting to %.1f "
+            "(use_weighted_sampling=%s).",
+            class_weight_power,
+            use_weighted_sampling,
+        )
+    else:
+        class_weight_power = float(class_weight_power_cfg)
     class_weights = get_class_weights_for_loss(train_df, power=class_weight_power)
     class_weights = class_weights.to(device)
     logger.info(f"Class weights: {class_weights.tolist()}")
@@ -1402,7 +1411,7 @@ def train(
                     "This can over-correct minority classes; consider values around 0.3-0.5.",
                     class_weight_power,
                 )
-            if train_config.get("use_weighted_sampling", True) and class_weight_power > 0.0:
+            if use_weighted_sampling and class_weight_power > 0.0:
                 logger.warning(
                     "Both weighted sampling and focal alpha weighting are active "
                     "(class_weight_power=%.3f). This can over-correct class imbalance.",
