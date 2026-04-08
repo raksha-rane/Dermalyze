@@ -341,6 +341,7 @@ class EarlyStopping:
         if improved:
             self.best_score = score
             self.counter = 0
+            self.should_stop = False
         else:
             self.counter += 1
             if self.counter >= self.patience:
@@ -350,14 +351,20 @@ class EarlyStopping:
 
 
 class ModelEMA:
-    """Exponential moving average (EMA) of model parameters."""
+    """Exponential moving average (EMA) of model parameters and floating buffers."""
 
     def __init__(self, model: nn.Module, decay: float = 0.999) -> None:
         self.decay = decay
         self.shadow = {
             name: param.detach().clone() for name, param in model.named_parameters()
         }
+        self.shadow_buffers = {
+            name: buffer.detach().clone()
+            for name, buffer in model.named_buffers()
+            if torch.is_floating_point(buffer)
+        }
         self.backup: Dict[str, torch.Tensor] = {}
+        self.backup_buffers: Dict[str, torch.Tensor] = {}
 
     @torch.no_grad()
     def update(self, model: nn.Module) -> None:
@@ -368,21 +375,41 @@ class ModelEMA:
             self.shadow[name].mul_(self.decay).add_(
                 param.detach(), alpha=1.0 - self.decay
             )
+        for name, buffer in model.named_buffers():
+            if not torch.is_floating_point(buffer):
+                continue
+            if name not in self.shadow_buffers:
+                self.shadow_buffers[name] = buffer.detach().clone()
+                continue
+            self.shadow_buffers[name].mul_(self.decay).add_(
+                buffer.detach(), alpha=1.0 - self.decay
+            )
 
     @torch.no_grad()
     def apply_to(self, model: nn.Module) -> None:
         self.backup = {}
+        self.backup_buffers = {}
         for name, param in model.named_parameters():
             if name in self.shadow:
                 self.backup[name] = param.detach().clone()
                 param.data.copy_(self.shadow[name])
+        for name, buffer in model.named_buffers():
+            if not torch.is_floating_point(buffer):
+                continue
+            if name in self.shadow_buffers:
+                self.backup_buffers[name] = buffer.detach().clone()
+                buffer.data.copy_(self.shadow_buffers[name])
 
     @torch.no_grad()
     def restore(self, model: nn.Module) -> None:
         for name, param in model.named_parameters():
             if name in self.backup:
                 param.data.copy_(self.backup[name])
+        for name, buffer in model.named_buffers():
+            if name in self.backup_buffers:
+                buffer.data.copy_(self.backup_buffers[name])
         self.backup = {}
+        self.backup_buffers = {}
 
 
 class MetricTracker:
@@ -394,7 +421,7 @@ class MetricTracker:
     def reset(self):
         """Reset all metrics."""
         self.loss_sum = 0.0
-        self.correct = 0
+        self.correct = 0.0
         self.total = 0
         self.all_preds = []
         self.all_targets = []
@@ -404,11 +431,15 @@ class MetricTracker:
         loss: float,
         preds: torch.Tensor,
         targets: torch.Tensor,
+        correct_override: Optional[float] = None,
     ):
         """Update metrics with batch results."""
         batch_size = targets.size(0)
         self.loss_sum += loss * batch_size
-        self.correct += (preds == targets).sum().item()
+        if correct_override is None:
+            self.correct += float((preds == targets).sum().item())
+        else:
+            self.correct += float(correct_override)
         self.total += batch_size
         self.all_preds.extend(preds.cpu().numpy())
         self.all_targets.extend(targets.cpu().numpy())
@@ -727,8 +758,19 @@ def train_one_epoch(
 
         # Update metrics (scale loss back up for reporting)
         preds = torch.argmax(outputs, dim=1)
-        metric_targets = targets_a if use_mix else targets
-        metrics.update(loss.item() * gradient_accumulation_steps, preds, metric_targets)
+        if use_mix:
+            mixed_correct = (
+                lam * (preds == targets_a).float()
+                + (1.0 - lam) * (preds == targets_b).float()
+            ).sum().item()
+            metrics.update(
+                loss.item() * gradient_accumulation_steps,
+                preds,
+                targets_a,
+                correct_override=float(mixed_correct),
+            )
+        else:
+            metrics.update(loss.item() * gradient_accumulation_steps, preds, targets)
 
         # Update progress bar
         current_metrics = metrics.compute()
@@ -856,6 +898,7 @@ def save_checkpoint(
     metadata_encoder_state: Optional[Dict[str, Any]] = None,
     best_metric_name: Optional[str] = None,
     best_metric_value: Optional[float] = None,
+    early_stopping_state: Optional[Dict[str, Any]] = None,
 ) -> None:
     """Save model checkpoint."""
     checkpoint = {
@@ -865,9 +908,22 @@ def save_checkpoint(
         "scheduler_state_dict": scheduler.state_dict() if scheduler else None,
         "metrics": metrics,
         "config": config,
-        "ema_state_dict": ema.shadow if ema is not None else None,
+        "ema_state_dict": (
+            {name: value.detach().clone() for name, value in ema.shadow.items()}
+            if ema is not None
+            else None
+        ),
+        "ema_buffer_state_dict": (
+            {
+                name: value.detach().clone()
+                for name, value in ema.shadow_buffers.items()
+            }
+            if ema is not None
+            else None
+        ),
         "ema_decay": ema.decay if ema is not None else None,
         "metadata_encoder_state": metadata_encoder_state,
+        "early_stopping_state": early_stopping_state,
     }
 
     # Ensure output directory exists
@@ -884,6 +940,9 @@ def save_checkpoint(
         if ema is not None and save_ema_for_best:
             ema_state = model.state_dict()
             for name, value in ema.shadow.items():
+                if name in ema_state:
+                    ema_state[name] = value.detach().clone()
+            for name, value in ema.shadow_buffers.items():
                 if name in ema_state:
                     ema_state[name] = value.detach().clone()
             best_checkpoint = dict(checkpoint)
@@ -1613,6 +1672,7 @@ def train(
     resume_optimizer_state_dict: Optional[Dict[str, Any]] = None
     resume_scheduler_state_dict: Optional[Dict[str, Any]] = None
     resume_state_target_stage: Optional[str] = None
+    resume_early_stopping_state: Optional[Dict[str, Any]] = None
 
     if resume_from is not None and resume_from.exists():
         logger.info(f"Resuming from checkpoint: {resume_from}")
@@ -1623,6 +1683,9 @@ def train(
         checkpoint_epoch = int(checkpoint.get("epoch", -1))
         start_epoch = checkpoint_epoch + 1
         prev_metrics = checkpoint.get("metrics", {})
+        checkpoint_early_stopping_state = checkpoint.get("early_stopping_state")
+        if isinstance(checkpoint_early_stopping_state, dict):
+            resume_early_stopping_state = checkpoint_early_stopping_state
         checkpoint_stage = (
             "stage1"
             if stage1_epochs > 0 and checkpoint_epoch < stage1_epochs
@@ -1649,16 +1712,35 @@ def train(
 
         if ema is not None:
             checkpoint_ema_state = checkpoint.get("ema_state_dict")
-            if isinstance(checkpoint_ema_state, dict):
-                restored_ema_tensors = 0
-                for name, tensor in checkpoint_ema_state.items():
-                    if name in ema.shadow and isinstance(tensor, torch.Tensor):
-                        ema.shadow[name] = tensor.detach().to(device=device).clone()
-                        restored_ema_tensors += 1
-                logger.info("Restored EMA state (%d tensors).", restored_ema_tensors)
+            checkpoint_ema_buffer_state = checkpoint.get("ema_buffer_state_dict")
+            if isinstance(checkpoint_ema_state, dict) or isinstance(
+                checkpoint_ema_buffer_state, dict
+            ):
+                restored_ema_params = 0
+                restored_ema_buffers = 0
+                if isinstance(checkpoint_ema_state, dict):
+                    for name, tensor in checkpoint_ema_state.items():
+                        if name in ema.shadow and isinstance(tensor, torch.Tensor):
+                            ema.shadow[name] = tensor.detach().to(device=device).clone()
+                            restored_ema_params += 1
+                if isinstance(checkpoint_ema_buffer_state, dict):
+                    for name, tensor in checkpoint_ema_buffer_state.items():
+                        if (
+                            name in ema.shadow_buffers
+                            and isinstance(tensor, torch.Tensor)
+                        ):
+                            ema.shadow_buffers[name] = (
+                                tensor.detach().to(device=device).clone()
+                            )
+                            restored_ema_buffers += 1
+                logger.info(
+                    "Restored EMA state (%d params, %d buffers).",
+                    restored_ema_params,
+                    restored_ema_buffers,
+                )
             else:
                 logger.warning(
-                    "EMA is enabled but checkpoint has no ema_state_dict; EMA will restart from current model weights."
+                    "EMA is enabled but checkpoint has no EMA state; EMA will restart from current model weights."
                 )
 
         if stage1_epochs > 0 and resume_state_target_stage is None:
@@ -1726,6 +1808,54 @@ def train(
                     "No existing best checkpoint found - failed to seed from resume checkpoint: %s",
                     exc,
                 )
+
+    # Keep early stopping baseline aligned with loaded best metric for resume continuity.
+    if math.isfinite(best_metric_value):
+        early_stopping.best_score = float(best_metric_value)
+        early_stopping.counter = 0
+        early_stopping.should_stop = False
+
+    if (
+        resume_early_stopping_state is not None
+        and resume_state_target_stage == "stage2"
+    ):
+        state_metric = str(resume_early_stopping_state.get("metric", ""))
+        state_mode = str(resume_early_stopping_state.get("mode", ""))
+        if state_metric == best_checkpoint_metric and state_mode == best_checkpoint_mode:
+            restored_counter = int(resume_early_stopping_state.get("counter", 0) or 0)
+            restored_best_score = resume_early_stopping_state.get("best_score")
+            if restored_best_score is not None:
+                early_stopping.best_score = float(restored_best_score)
+            if (
+                early_stopping.best_score is not None
+                and math.isfinite(best_metric_value)
+            ):
+                if best_checkpoint_mode == "min":
+                    early_stopping.best_score = min(
+                        float(early_stopping.best_score),
+                        float(best_metric_value),
+                    )
+                else:
+                    early_stopping.best_score = max(
+                        float(early_stopping.best_score),
+                        float(best_metric_value),
+                    )
+            early_stopping.counter = max(0, restored_counter)
+            early_stopping.should_stop = False
+            logger.info(
+                "Restored early stopping state for stage2 (%s, counter=%d).",
+                best_checkpoint_metric,
+                early_stopping.counter,
+            )
+        else:
+            logger.warning(
+                "Ignoring checkpoint early_stopping_state due to metric/mode mismatch "
+                "(checkpoint: %s/%s, current: %s/%s).",
+                state_metric or "unknown",
+                state_mode or "unknown",
+                best_checkpoint_metric,
+                best_checkpoint_mode,
+            )
 
     # Training history
     history = {
@@ -1843,6 +1973,20 @@ def train(
 
             val_loss = float(val_metrics["loss"])
             val_acc = float(val_metrics["accuracy"])
+            early_stop_metric_value: Optional[float] = None
+            should_stop_early = False
+            if enable_early_stopping:
+                early_stop_metric_value = _get_metric_value(
+                    val_metrics, best_checkpoint_metric
+                )
+                if early_stop_metric_value is None:
+                    logger.warning(
+                        f"Early stopping metric '{best_checkpoint_metric}' not found in validation metrics, "
+                        f"using 'loss' as fallback"
+                    )
+                    early_stop_metric_value = float(val_metrics["loss"])
+                should_stop_early = early_stopping(early_stop_metric_value)
+
             save_checkpoint(
                 model=model,
                 optimizer=optimizer,
@@ -1872,25 +2016,26 @@ def train(
                 metadata_encoder_state=metadata_encoder_state,
                 best_metric_name=best_checkpoint_metric,
                 best_metric_value=current_metric_value if is_best else None,
+                early_stopping_state=(
+                    {
+                        "metric": best_checkpoint_metric,
+                        "mode": best_checkpoint_mode,
+                        "best_score": early_stopping.best_score,
+                        "counter": early_stopping.counter,
+                        "patience": early_stopping.patience,
+                        "min_delta": early_stopping.min_delta,
+                    }
+                    if enable_early_stopping
+                    else None
+                ),
             )
 
-            if enable_early_stopping:
-                early_stop_metric_value = _get_metric_value(
-                    val_metrics, best_checkpoint_metric
+            if should_stop_early and early_stop_metric_value is not None:
+                logger.info(
+                    f"Early stopping triggered at epoch {epoch + 1} "
+                    f"({best_checkpoint_metric}={early_stop_metric_value:.4f})"
                 )
-                if early_stop_metric_value is None:
-                    logger.warning(
-                        f"Early stopping metric '{best_checkpoint_metric}' not found in validation metrics, "
-                        f"using 'loss' as fallback"
-                    )
-                    early_stop_metric_value = val_metrics["loss"]
-                
-                if early_stopping(early_stop_metric_value):
-                    logger.info(
-                        f"Early stopping triggered at epoch {epoch + 1} "
-                        f"({best_checkpoint_metric}={early_stop_metric_value:.4f})"
-                    )
-                    return True
+                return True
         return False
 
     stopped = False
