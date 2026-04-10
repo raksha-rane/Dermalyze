@@ -1,83 +1,230 @@
-
 import React from 'react';
+import {
+  ArrowPathIcon,
+  ClockIcon,
+  ExclamationTriangleIcon,
+  LifebuoyIcon,
+  MagnifyingGlassPlusIcon,
+  PhotoIcon,
+} from '@heroicons/react/24/outline';
 
 interface HelpScreenProps {
   onBack: () => void;
 }
 
+const QUICK_START = [
+  {
+    title: 'Capture a usable image',
+    detail: 'Use a focused dermatoscopic JPEG/PNG with lesion centered and minimal glare.',
+    Icon: PhotoIcon,
+  },
+  {
+    title: 'Run and review',
+    detail: 'Check top class, confidence, and heatmap before making follow-up decisions.',
+    Icon: MagnifyingGlassPlusIcon,
+  },
+  {
+    title: 'Record and export',
+    detail: 'Add notes immediately and export PDF if you need to share the case.',
+    Icon: ClockIcon,
+  },
+];
+
+const TROUBLESHOOTING: Array<{
+  issue: string;
+  whyItHappens: string;
+  whatToDo: string;
+}> = [
+  {
+    issue: 'Upload rejected',
+    whyItHappens: 'File is not JPEG/PNG or exceeds 10 MB.',
+    whatToDo: 'Re-export as JPG/PNG and keep file size under 10 MB.',
+  },
+  {
+    issue: 'Low-confidence result',
+    whyItHappens: 'Image quality is limited or lesion presentation is atypical.',
+    whatToDo: 'Retake with better focus/lighting and correlate with exam findings.',
+  },
+  {
+    issue: 'History missing a new case',
+    whyItHappens: 'Save may have failed due to connection interruption.',
+    whatToDo: 'Re-run analysis or refresh History to confirm persistence.',
+  },
+];
+
+const FAQ = [
+  {
+    question: 'How should confidence be interpreted?',
+    answer:
+      'Confidence reflects model certainty, not diagnostic certainty. Use it as one signal alongside history, exam, and follow-up plans.',
+  },
+  {
+    question: 'When should I prioritize urgent follow-up?',
+    answer:
+      'Treat critical/high-risk predictions as immediate review triggers, especially when aligned with concerning clinical features.',
+  },
+  {
+    question: 'What if heatmap focus looks clinically irrelevant?',
+    answer:
+      'Treat that as a caution flag. Re-capture the image and avoid over-weighting model output when visual rationale is inconsistent.',
+  },
+];
+
 const HelpScreen: React.FC<HelpScreenProps> = ({ onBack }) => {
   return (
-    <div className="flex-1 flex flex-col bg-slate-50 text-slate-900 min-h-screen">
-      <main className="flex-1 flex flex-col items-center justify-center p-6 sm:p-12">
-        <div className="max-w-2xl w-full">
-          <div className="bg-white rounded-3xl border border-slate-200 p-8 sm:p-12 shadow-sm">
-            <header className="mb-10 text-center">
-              <h1 className="text-3xl font-bold tracking-tight text-slate-900 mb-2">How Dermalyze Works</h1>
-              <div className="w-12 h-1 bg-teal-600 mx-auto rounded-full"></div>
-            </header>
+    <div className="flex-1 flex flex-col bg-slate-50 text-slate-900">
+      <section className="bg-gradient-to-br from-teal-600 to-teal-700 px-6 py-12 sm:py-16">
+        <div className="max-w-6xl mx-auto">
+          <span className="inline-flex items-center gap-2 px-3 py-1.5 bg-white/20 backdrop-blur-sm text-white text-[11px] font-bold uppercase tracking-wider rounded-lg border border-white/30 mb-4">
+            <LifebuoyIcon className="w-4 h-4" />
+            Help Center
+          </span>
+          <h1 className="text-3xl sm:text-4xl font-bold text-white tracking-tight mb-4">
+            How to get better results with Dermalyze
+          </h1>
+          <p className="text-teal-50 text-base leading-relaxed max-w-3xl mb-8">
+            Practical guidance for image quality, result interpretation, and quick recovery when
+            something goes wrong.
+          </p>
+          <button
+            onClick={onBack}
+            className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white border-2 border-white/30 hover:bg-white/10 rounded-xl transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M10 19l-7-7m0 0l7-7m-7 7h18"
+              />
+            </svg>
+            Back to Dashboard
+          </button>
+        </div>
+      </section>
 
-            <div className="space-y-12">
-              {/* Section 1: Step-by-Step Usage Guide */}
-              <section className="space-y-4">
-                <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Step-by-Step Usage Guide</h2>
-                <ol className="space-y-3 list-decimal list-inside text-sm text-slate-600 leading-relaxed">
-                  <li>Upload a high-quality dermatoscopic image of the lesion.</li>
-                  <li>The system preprocesses the image on the secure server.</li>
-                  <li>Deep learning algorithms analyze lesion features.</li>
-                  <li>A probability distribution across clinical classes is generated.</li>
-                  <li>Review results as a supplementary diagnostic data point.</li>
-                </ol>
-              </section>
-
-              {/* Section 2: System Flow Explanation */}
-              <section className="space-y-4">
-                <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest">System Workflow</h2>
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 text-center">
-                  <p className="text-xs font-semibold text-slate-500 tracking-tight">
-                    Image Upload → Clinical Preprocessing → Model Inference → Probability Output → Decision Support
-                  </p>
-                </div>
-              </section>
-
-              {/* Section 3: Frequently Asked Questions */}
-              <section className="space-y-6">
-                <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Frequently Asked Questions</h2>
-                <div className="space-y-6">
-                  <div className="space-y-1">
-                    <p className="text-sm font-bold text-slate-800">Q: “Is this a standalone diagnostic tool?”</p>
-                    <p className="text-sm text-slate-600">A: “No. Dermalyze is a decision support system designed to assist, not replace, the clinician's primary diagnosis.”</p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-sm font-bold text-slate-800">Q: “What types of images are required?”</p>
-                    <p className="text-sm text-slate-600">A: “Standard dermatoscopic RGB images of skin lesions are required for accurate analysis.”</p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-sm font-bold text-slate-800">Q: “How should the results be interpreted?”</p>
-                    <p className="text-sm text-slate-600">A: “Results indicate model confidence and should be evaluated alongside clinical history and physical examination.”</p>
-                  </div>
-                </div>
-              </section>
+      <main className="flex-1">
+        <section className="bg-slate-100 px-6 py-12">
+          <div className="max-w-6xl mx-auto">
+            <div className="mb-8">
+              <h2 className="text-2xl font-bold text-slate-900 mb-2">
+                Quick start in three actions
+              </h2>
+              <p className="text-sm text-slate-500">Use this checklist for every new case.</p>
             </div>
-
-            <div className="mt-12 flex justify-center">
-              <button 
-                onClick={onBack}
-                className="text-sm font-bold text-teal-600 hover:text-teal-700 transition-colors flex items-center gap-2 group"
-              >
-                <svg className="w-4 h-4 transition-transform group-hover:-translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                </svg>
-                Back to Dashboard
-              </button>
+            <div className="grid md:grid-cols-3 gap-6">
+              {QUICK_START.map(({ title, detail, Icon }) => (
+                <article
+                  key={title}
+                  className="bg-white rounded-2xl border-2 border-slate-300 p-6 shadow-sm"
+                >
+                  <div className="w-12 h-12 bg-teal-600 rounded-xl flex items-center justify-center mb-4 shadow-sm">
+                    <Icon className="w-6 h-6 text-white" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-slate-900 mb-2">{title}</h3>
+                  <p className="text-sm text-slate-600 leading-relaxed">{detail}</p>
+                </article>
+              ))}
             </div>
           </div>
-        </div>
+        </section>
+
+        <section className="bg-white px-6 py-12">
+          <div className="max-w-6xl mx-auto">
+            <div className="mb-8">
+              <h2 className="text-2xl font-bold text-slate-900 mb-2">Troubleshooting</h2>
+              <p className="text-sm text-slate-500">Most common issues and the fastest fix.</p>
+            </div>
+            <div className="space-y-4">
+              {TROUBLESHOOTING.map(({ issue, whyItHappens, whatToDo }) => (
+                <article
+                  key={issue}
+                  className="bg-slate-50 rounded-2xl border-2 border-slate-300 p-5"
+                >
+                  <div className="grid lg:grid-cols-[180px_1fr_1fr] gap-4">
+                    <div className="flex items-center gap-2">
+                      <ExclamationTriangleIcon className="w-5 h-5 text-amber-600 shrink-0" />
+                      <p className="text-sm font-bold text-slate-900">{issue}</p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                        Why it happens
+                      </p>
+                      <p className="text-sm text-slate-600 leading-relaxed">{whyItHappens}</p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                        What to do now
+                      </p>
+                      <p className="text-sm text-slate-700 leading-relaxed font-medium">
+                        {whatToDo}
+                      </p>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="bg-slate-50 px-6 py-12">
+          <div className="max-w-6xl mx-auto grid lg:grid-cols-2 gap-6">
+            <article className="bg-white rounded-2xl border-2 border-slate-300 p-6 shadow-sm">
+              <h2 className="text-lg font-bold text-slate-900 mb-4">
+                Result interpretation guardrails
+              </h2>
+              <div className="space-y-3">
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+                  <p className="text-xs font-bold text-emerald-700 uppercase tracking-wider mb-2">
+                    Use results for
+                  </p>
+                  <p className="text-sm text-emerald-800 leading-relaxed">
+                    Triage support, documentation consistency, and longitudinal comparison of lesion
+                    behavior.
+                  </p>
+                </div>
+                <div className="bg-rose-50 border border-rose-200 rounded-xl p-4">
+                  <p className="text-xs font-bold text-rose-700 uppercase tracking-wider mb-2">
+                    Do not use results for
+                  </p>
+                  <p className="text-sm text-rose-800 leading-relaxed">
+                    Standalone diagnosis, treatment decisions without clinical correlation, or
+                    delaying indicated referral.
+                  </p>
+                </div>
+              </div>
+            </article>
+
+            <article className="bg-white rounded-2xl border-2 border-slate-300 p-6 shadow-sm">
+              <div className="flex items-center gap-2 mb-4">
+                <ArrowPathIcon className="w-5 h-5 text-teal-600" />
+                <h2 className="text-lg font-bold text-slate-900">Frequently asked questions</h2>
+              </div>
+              <div className="space-y-4">
+                {FAQ.map(({ question, answer }) => (
+                  <div
+                    key={question}
+                    className="pb-4 border-b border-slate-200 last:border-b-0 last:pb-0"
+                  >
+                    <p className="text-sm font-semibold text-slate-900 mb-1">{question}</p>
+                    <p className="text-sm text-slate-600 leading-relaxed">{answer}</p>
+                  </div>
+                ))}
+              </div>
+            </article>
+          </div>
+        </section>
       </main>
 
-      <footer className="py-8 text-center bg-slate-50">
-        <p className="text-[11px] font-medium text-slate-400 uppercase tracking-widest leading-relaxed px-6">
-          Clinical Support & Diagnostic Aid Suite
-        </p>
+      <footer className="bg-white border-t-2 border-slate-300 py-8 px-6">
+        <div className="max-w-6xl mx-auto text-center">
+          <p className="text-xs text-slate-400 uppercase tracking-widest font-bold">
+            Need reliable results? prioritize image quality first.
+          </p>
+          <p className="text-xs text-slate-400 mt-2">
+            Dermalyze supports clinical judgment, not replaces it.
+          </p>
+        </div>
       </footer>
     </div>
   );

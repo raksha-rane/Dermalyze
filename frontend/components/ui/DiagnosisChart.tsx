@@ -126,9 +126,7 @@ const DiagnosisChart: React.FC<DiagnosisChartProps> = ({ data, title }) => {
                 <span className="text-xs font-medium text-slate-600 truncate max-w-[100px]">
                   {item.name.split(' ')[0]}
                 </span>
-                <span className="text-xs font-bold text-slate-800 tabular-nums">
-                  {item.count}
-                </span>
+                <span className="text-xs font-bold text-slate-800 tabular-nums">{item.count}</span>
               </div>
             );
           })}
@@ -169,14 +167,21 @@ const DiagnosisChart: React.FC<DiagnosisChartProps> = ({ data, title }) => {
               {/* Label - shortened */}
               <div className="mt-2 w-full text-center">
                 <span className="text-[9px] font-medium text-slate-500 leading-tight block truncate px-0.5">
-                  {item.name === 'Melanocytic Nevi' ? 'Nevi' :
-                   item.name === 'Basal Cell Carcinoma' ? 'BCC' :
-                   item.name === 'Actinic Keratoses' ? 'AK' :
-                   item.name === 'Benign Keratosis' ? 'BK' :
-                   item.name === 'Dermatofibroma' ? 'DF' :
-                   item.name === 'Vascular Lesions' ? 'Vasc' :
-                   item.name === 'Melanoma' ? 'Mel' :
-                   item.name.slice(0, 4)}
+                  {item.name === 'Melanocytic Nevi'
+                    ? 'Nevi'
+                    : item.name === 'Basal Cell Carcinoma'
+                      ? 'BCC'
+                      : item.name === 'Actinic Keratoses'
+                        ? 'AK'
+                        : item.name === 'Benign Keratosis'
+                          ? 'BK'
+                          : item.name === 'Dermatofibroma'
+                            ? 'DF'
+                            : item.name === 'Vascular Lesions'
+                              ? 'Vasc'
+                              : item.name === 'Melanoma'
+                                ? 'Mel'
+                                : item.name.slice(0, 4)}
                 </span>
               </div>
             </div>
@@ -217,7 +222,12 @@ const DiagnosisChart: React.FC<DiagnosisChartProps> = ({ data, title }) => {
             title="Bar chart"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+              />
             </svg>
           </button>
           <button
@@ -231,8 +241,18 @@ const DiagnosisChart: React.FC<DiagnosisChartProps> = ({ data, title }) => {
             title="Pie chart"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z"
+              />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z"
+              />
             </svg>
           </button>
         </div>

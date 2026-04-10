@@ -60,7 +60,13 @@ const Heatmap: React.FC<HeatmapProps> = ({ data, title }) => {
             {Array.from({ length: 24 }).map((_, hour) => (
               <div key={hour} className="w-6 text-center">
                 <span className="text-xs text-slate-400">
-                  {hour === 0 ? '12a' : hour < 12 ? `${hour}a` : hour === 12 ? '12p' : `${hour - 12}p`}
+                  {hour === 0
+                    ? '12a'
+                    : hour < 12
+                      ? `${hour}a`
+                      : hour === 12
+                        ? '12p'
+                        : `${hour - 12}p`}
                 </span>
               </div>
             ))}
@@ -69,9 +75,7 @@ const Heatmap: React.FC<HeatmapProps> = ({ data, title }) => {
           {/* Heatmap rows */}
           {days.map((day, dayIndex) => (
             <div key={dayIndex} className="flex items-center gap-1 mb-1">
-              <div className="w-10 text-xs font-medium text-slate-600 text-right">
-                {day}
-              </div>
+              <div className="w-10 text-xs font-medium text-slate-600 text-right">{day}</div>
               {Array.from({ length: 24 }).map((_, hour) => {
                 const cell = data.find((d) => d.day === dayIndex && d.hour === hour);
                 const count = cell?.count || 0;
@@ -106,9 +110,7 @@ const Heatmap: React.FC<HeatmapProps> = ({ data, title }) => {
           {/* Heatmap rows */}
           {days.map((day, dayIndex) => (
             <div key={dayIndex} className="flex items-center gap-1 mb-1">
-              <div className="w-10 text-xs font-medium text-slate-600 text-right">
-                {day}
-              </div>
+              <div className="w-10 text-xs font-medium text-slate-600 text-right">{day}</div>
               {hourRanges.map((range, rangeIndex) => {
                 // Sum counts for hours in this range
                 const totalCount = range.hours.reduce((sum, hour) => {
@@ -125,9 +127,7 @@ const Heatmap: React.FC<HeatmapProps> = ({ data, title }) => {
                     title={`${day} ${range.label} - ${totalCount} analyses`}
                   >
                     {totalCount > 0 && (
-                      <span className="text-xs font-bold text-slate-700">
-                        {totalCount}
-                      </span>
+                      <span className="text-xs font-bold text-slate-700">{totalCount}</span>
                     )}
                   </div>
                 );

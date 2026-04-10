@@ -240,22 +240,23 @@ export const DataCacheProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           if (signed) {
             await Promise.all(
               signed.map(async (entry) => {
-                if (!entry.signedUrl) return;
+                const { path, signedUrl } = entry;
+                if (!path || !signedUrl) return;
                 try {
-                  const isEncrypted = entry.path.endsWith('.enc');
+                  const isEncrypted = path.endsWith('.enc');
 
                   if (isEncrypted) {
-                    const response = await fetch(entry.signedUrl);
+                    const response = await fetch(signedUrl);
                     if (!response.ok) return;
                     const encryptedBlob = await response.blob();
                     const decryptedBlob = await decryptImage(encryptedBlob, userId, 'image/webp');
                     const dataUrl = await blobToDataUrl(decryptedBlob);
-                    imageUrlMap[entry.path] = dataUrl;
+                    imageUrlMap[path] = dataUrl;
                   } else {
-                    imageUrlMap[entry.path] = entry.signedUrl;
+                    imageUrlMap[path] = signedUrl;
                   }
                 } catch (err) {
-                  console.error(`Failed to process image ${entry.path}:`, err);
+                  console.error(`Failed to process image ${path}:`, err);
                 }
               })
             );
@@ -266,11 +267,12 @@ export const DataCacheProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           const rawUrl = row.image_url as string | null;
           const rawGradcamUrl = row.gradcam_image_url as string | null;
 
-          const imageUrl = rawUrl && !rawUrl.startsWith('http') ? imageUrlMap[rawUrl] : rawUrl;
+          const imageUrl =
+            rawUrl && !rawUrl.startsWith('http') ? imageUrlMap[rawUrl] : (rawUrl ?? undefined);
           const gradcamUrl =
             rawGradcamUrl && !rawGradcamUrl.startsWith('http')
               ? imageUrlMap[rawGradcamUrl]
-              : rawGradcamUrl;
+              : (rawGradcamUrl ?? undefined);
 
           return {
             id: row.id,

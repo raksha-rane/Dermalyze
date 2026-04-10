@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from './lib/supabase';
@@ -7,61 +6,82 @@ import ErrorBoundary from './components/ErrorBoundary';
 import AppLayout from './components/AppLayout';
 
 // ── Code-split screen imports ─────────────────────────────────────────────────
-const LandingScreen        = lazy(() => import('./components/LandingScreen'));
-const LoginScreen          = lazy(() => import('./components/LoginScreen'));
-const SignupScreen         = lazy(() => import('./components/SignupScreen'));
+const LandingScreen = lazy(() => import('./components/LandingScreen'));
+const LoginScreen = lazy(() => import('./components/LoginScreen'));
+const SignupScreen = lazy(() => import('./components/SignupScreen'));
 const ForgotPasswordScreen = lazy(() => import('./components/ForgotPasswordScreen'));
-const ResetPasswordScreen  = lazy(() => import('./components/ResetPasswordScreen'));
-const DashboardScreen      = lazy(() => import('./components/DashboardScreen'));
-const UploadScreen         = lazy(() => import('./components/UploadScreen'));
-const ProcessingScreen     = lazy(() => import('./components/ProcessingScreen'));
-const ResultsScreen        = lazy(() => import('./components/ResultsScreen'));
-const HistoryScreen        = lazy(() => import('./components/HistoryScreen'));
-const HistoryDetailScreen  = lazy(() => import('./components/HistoryDetailScreen'));
-const TrendsScreen         = lazy(() => import('./components/TrendsScreen'));
-const ErrorScreen          = lazy(() => import('./components/ErrorScreen'));
-const AboutScreen          = lazy(() => import('./components/AboutScreen'));
-const HelpScreen           = lazy(() => import('./components/HelpScreen'));
-const LogoutConfirmScreen  = lazy(() => import('./components/LogoutConfirmScreen'));
-const ProfileScreen        = lazy(() => import('./components/ProfileScreen'));
+const ResetPasswordScreen = lazy(() => import('./components/ResetPasswordScreen'));
+const DashboardScreen = lazy(() => import('./components/DashboardScreen'));
+const UploadScreen = lazy(() => import('./components/UploadScreen'));
+const ProcessingScreen = lazy(() => import('./components/ProcessingScreen'));
+const ResultsScreen = lazy(() => import('./components/ResultsScreen'));
+const HistoryScreen = lazy(() => import('./components/HistoryScreen'));
+const HistoryDetailScreen = lazy(() => import('./components/HistoryDetailScreen'));
+const TrendsScreen = lazy(() => import('./components/TrendsScreen'));
+const ErrorScreen = lazy(() => import('./components/ErrorScreen'));
+const AboutScreen = lazy(() => import('./components/AboutScreen'));
+const HelpScreen = lazy(() => import('./components/HelpScreen'));
+const LogoutConfirmScreen = lazy(() => import('./components/LogoutConfirmScreen'));
+const ProfileScreen = lazy(() => import('./components/ProfileScreen'));
 const EmailVerificationScreen = lazy(() => import('./components/EmailVerificationScreen'));
 
 // ── Route paths ───────────────────────────────────────────────────────────────
 export const ROUTES = {
-  login:             '/login',
-  signup:            '/signup',
-  forgotPassword:    '/forgot-password',
-  resetPassword:     '/reset-password',
+  login: '/login',
+  signup: '/signup',
+  forgotPassword: '/forgot-password',
+  resetPassword: '/reset-password',
   emailVerification: '/email-verification',
-  dashboard:         '/dashboard',
-  upload:            '/upload',
-  processing:        '/processing',
-  results:           '/results',
-  history:           '/history',
-  historyDetail:     '/history/detail',
-  trends:            '/trends',
-  error:             '/error',
-  about:             '/about',
-  help:              '/help',
-  profile:           '/profile',
+  dashboard: '/dashboard',
+  upload: '/upload',
+  processing: '/processing',
+  results: '/results',
+  history: '/history',
+  historyDetail: '/history/detail',
+  trends: '/trends',
+  error: '/error',
+  about: '/about',
+  help: '/help',
+  profile: '/profile',
 } as const;
 
 const PUBLIC_ROUTES: string[] = [
-  '/', '/login', '/signup', '/forgot-password', '/reset-password', '/email-verification',
+  '/',
+  '/login',
+  '/signup',
+  '/forgot-password',
+  '/reset-password',
+  '/email-verification',
 ];
 
 const SIGNUP_EMAIL_KEY = 'dermalyze_signup_email';
-const IDLE_TIMEOUT_MS  = 30 * 60 * 1_000; // 30 minutes
-const IDLE_WARN_MS     = 28 * 60 * 1_000; // warn 2 minutes before
+const IDLE_TIMEOUT_MS = 30 * 60 * 1_000; // 30 minutes
+const IDLE_WARN_MS = 28 * 60 * 1_000; // warn 2 minutes before
 
 // ── Loading fallback ──────────────────────────────────────────────────────────
 const PageLoader = () => (
   <div className="flex-1 flex items-center justify-center min-h-screen">
     <div className="text-center">
       <div className="inline-flex items-center justify-center w-12 h-12 bg-teal-50 rounded-xl mb-4">
-        <svg className="animate-spin h-6 w-6 text-teal-600" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+        <svg
+          className="animate-spin h-6 w-6 text-teal-600"
+          viewBox="0 0 24 24"
+          fill="none"
+          aria-hidden="true"
+        >
+          <circle
+            className="opacity-25"
+            cx="12"
+            cy="12"
+            r="10"
+            stroke="currentColor"
+            strokeWidth="4"
+          />
+          <path
+            className="opacity-75"
+            fill="currentColor"
+            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+          />
         </svg>
       </div>
       <p className="text-sm text-slate-400">Loading…</p>
@@ -74,20 +94,20 @@ const App: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [selectedImage,       setSelectedImage]       = useState<string | null>(null);
-  const [analysisResults,     setAnalysisResults]     = useState<ClassResult[] | null>(null);
-  const [analysisGradcam,     setAnalysisGradcam]     = useState<string | null>(null);
-  const [analysisCaseId,      setAnalysisCaseId]      = useState<string | null>(null);
-  const [analysisError,       setAnalysisError]       = useState<string | null>(null);
-  const [analysisRetryable,   setAnalysisRetryable]   = useState(false);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [analysisResults, setAnalysisResults] = useState<ClassResult[] | null>(null);
+  const [analysisGradcam, setAnalysisGradcam] = useState<string | null>(null);
+  const [analysisCaseId, setAnalysisCaseId] = useState<string | null>(null);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [analysisRetryable, setAnalysisRetryable] = useState(false);
   const [selectedHistoryItem, setSelectedHistoryItem] = useState<AnalysisHistoryItem | null>(null);
-  const [showLogoutConfirm,   setShowLogoutConfirm]   = useState(false);
-  const [prevPath,            setPrevPath]            = useState<string | null>(null);
-  const [authChecked,         setAuthChecked]         = useState(false);
-  const [signupEmail,         setSignupEmail]         = useState<string>(
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [prevPath, setPrevPath] = useState<string | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [signupEmail, setSignupEmail] = useState<string>(
     () => sessionStorage.getItem(SIGNUP_EMAIL_KEY) ?? ''
   );
-  const [showIdleWarning,     setShowIdleWarning]     = useState(false);
+  const [showIdleWarning, setShowIdleWarning] = useState(false);
   const lastActivityRef = useRef(Date.now());
 
   const saveSignupEmail = useCallback((email: string) => {
@@ -127,9 +147,11 @@ const App: React.FC = () => {
       setAuthChecked(true);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'PASSWORD_RECOVERY') navigate(ROUTES.resetPassword);
-      if (event === 'SIGNED_OUT')        navigate(ROUTES.login);
+      if (event === 'SIGNED_OUT') navigate(ROUTES.login);
     });
 
     return () => subscription.unsubscribe();
@@ -143,7 +165,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const events = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'] as const;
-    events.forEach(e => window.addEventListener(e, resetIdleTimer, { passive: true }));
+    events.forEach((e) => window.addEventListener(e, resetIdleTimer, { passive: true }));
 
     const interval = setInterval(async () => {
       if (PUBLIC_ROUTES.includes(location.pathname)) return;
@@ -157,7 +179,7 @@ const App: React.FC = () => {
     }, 60_000);
 
     return () => {
-      events.forEach(e => window.removeEventListener(e, resetIdleTimer));
+      events.forEach((e) => window.removeEventListener(e, resetIdleTimer));
       clearInterval(interval);
     };
   }, [resetIdleTimer, location.pathname]);
@@ -206,169 +228,245 @@ const App: React.FC = () => {
     <ErrorBoundary>
       <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 font-sans">
         {showIdleWarning && !PUBLIC_ROUTES.includes(location.pathname) && (
-          <div role="alert" className="fixed top-0 left-0 right-0 z-50 bg-amber-600 text-white text-xs font-semibold text-center py-2 px-4">
-            Your session will expire in 2 minutes due to inactivity. Move your mouse or press a key to stay signed in.
+          <div
+            role="alert"
+            className="fixed top-0 left-0 right-0 z-50 bg-amber-600 text-white text-xs font-semibold text-center py-2 px-4"
+          >
+            Your session will expire in 2 minutes due to inactivity. Move your mouse or press a key
+            to stay signed in.
           </div>
         )}
         <Suspense fallback={<PageLoader />}>
           <Routes>
             {/* ── Landing ── */}
-            <Route path="/" element={
-              <LandingScreen
-                onNavigateToLogin={() => navigate(ROUTES.login)}
-                onNavigateToSignup={() => navigate(ROUTES.signup)}
-              />
-            } />
+            <Route
+              path="/"
+              element={
+                <LandingScreen
+                  onNavigateToLogin={() => navigate(ROUTES.login)}
+                  onNavigateToSignup={() => navigate(ROUTES.signup)}
+                />
+              }
+            />
 
             {/* ── Public ── */}
-            <Route path={ROUTES.login} element={
-              <LoginScreen
-                onNavigateToSignup={() => navigate(ROUTES.signup)}
-                onNavigateToForgotPassword={() => navigate(ROUTES.forgotPassword)}
-                onNavigateToHome={() => navigate('/')}
-                onLoginSuccess={() => navigate(ROUTES.dashboard)}
-              />
-            } />
-            <Route path={ROUTES.signup} element={
-              <SignupScreen
-                onNavigateToLogin={() => navigate(ROUTES.login)}
-                onNavigateToHome={() => navigate('/')}
-                onSignupSuccess={(email) => {
-                  saveSignupEmail(email);
-                  navigate(ROUTES.emailVerification);
-                }}
-              />
-            } />
-            <Route path={ROUTES.forgotPassword} element={
-              <ForgotPasswordScreen
-                onNavigateToLogin={() => navigate(ROUTES.login)}
-                onNavigateToSignup={() => navigate(ROUTES.signup)}
-                onNavigateToHome={() => navigate('/')}
-              />
-            } />
-            <Route path={ROUTES.resetPassword} element={
-              <ResetPasswordScreen
-                onPasswordReset={() => navigate(ROUTES.login)}
-                onNavigateToHome={() => navigate('/')}
-              />
-            } />
-            <Route path={ROUTES.emailVerification} element={
-              <EmailVerificationScreen
-                email={signupEmail}
-                onNavigateToLogin={() => navigate(ROUTES.login)}
-                onNavigateToHome={() => navigate('/')}
-                onResendEmail={async () => {
-                  const email = signupEmail || sessionStorage.getItem(SIGNUP_EMAIL_KEY) || '';
-                  if (!email) throw new Error('No email address available to resend to.');
-                  const { error } = await supabase.auth.resend({ type: 'signup', email });
-                  if (error) throw error;
-                }}
-              />
-            } />
+            <Route
+              path={ROUTES.login}
+              element={
+                <LoginScreen
+                  onNavigateToSignup={() => navigate(ROUTES.signup)}
+                  onNavigateToForgotPassword={() => navigate(ROUTES.forgotPassword)}
+                  onNavigateToHome={() => navigate('/')}
+                  onLoginSuccess={() => navigate(ROUTES.dashboard)}
+                />
+              }
+            />
+            <Route
+              path={ROUTES.signup}
+              element={
+                <SignupScreen
+                  onNavigateToLogin={() => navigate(ROUTES.login)}
+                  onNavigateToHome={() => navigate('/')}
+                  onSignupSuccess={(email) => {
+                    saveSignupEmail(email);
+                    navigate(ROUTES.emailVerification);
+                  }}
+                />
+              }
+            />
+            <Route
+              path={ROUTES.forgotPassword}
+              element={
+                <ForgotPasswordScreen
+                  onNavigateToLogin={() => navigate(ROUTES.login)}
+                  onNavigateToSignup={() => navigate(ROUTES.signup)}
+                  onNavigateToHome={() => navigate('/')}
+                />
+              }
+            />
+            <Route
+              path={ROUTES.resetPassword}
+              element={
+                <ResetPasswordScreen
+                  onPasswordReset={() => navigate(ROUTES.login)}
+                  onNavigateToHome={() => navigate('/')}
+                />
+              }
+            />
+            <Route
+              path={ROUTES.emailVerification}
+              element={
+                <EmailVerificationScreen
+                  email={signupEmail}
+                  onNavigateToLogin={() => navigate(ROUTES.login)}
+                  onNavigateToHome={() => navigate('/')}
+                  onResendEmail={async () => {
+                    const email = signupEmail || sessionStorage.getItem(SIGNUP_EMAIL_KEY) || '';
+                    if (!email) throw new Error('No email address available to resend to.');
+                    const { error } = await supabase.auth.resend({ type: 'signup', email });
+                    if (error) throw error;
+                  }}
+                />
+              }
+            />
 
             {/* ── Protected (all share the AppLayout sidebar) ── */}
-            <Route path={ROUTES.dashboard} element={
-              <AppLayout onLogout={handleRequestLogout}>
-                <DashboardScreen
-                  onNavigateToUpload={() => navigate(ROUTES.upload)}
-                  onNavigateToHistory={() => navigate(ROUTES.history)}
-                  onNavigateToTrends={() => navigate(ROUTES.trends)}
-                />
-              </AppLayout>
-            } />
-            <Route path={ROUTES.upload} element={
-              <AppLayout onLogout={handleRequestLogout}>
-                <UploadScreen
-                  selectedImage={selectedImage}
-                  onImageSelect={setSelectedImage}
-                  onBack={() => navigate(ROUTES.dashboard)}
-                  onRunClassification={() => navigate(ROUTES.processing)}
-                  onError={(msg) => { setAnalysisError(msg ?? null); navigate(ROUTES.error); }}
-                />
-              </AppLayout>
-            } />
-            <Route path={ROUTES.processing} element={
-              !selectedImage ? <Navigate to={ROUTES.upload} replace /> : (
-              <AppLayout onLogout={handleRequestLogout}>
-                <ProcessingScreen
-                  image={selectedImage}
-                  onComplete={(results, gradcamImage) => {
-                    const caseId = crypto.randomUUID();
-                    setAnalysisCaseId(caseId);
-                    setAnalysisResults(results);
-                    setAnalysisGradcam(gradcamImage ?? null);
-                    navigate(ROUTES.results);
-                  }}
-                  onError={(msg, retryable) => { setAnalysisError(msg ?? null); setAnalysisRetryable(retryable ?? false); navigate(ROUTES.error); }}
-                />
-              </AppLayout>
-              )
-            } />
-            <Route path={ROUTES.results} element={
-              (!selectedImage || !analysisResults || !analysisCaseId) ? <Navigate to={ROUTES.upload} replace /> : (
-              <AppLayout onLogout={handleRequestLogout}>
-                <ResultsScreen
-                  image={selectedImage}
-                  results={analysisResults}
-                  gradcamImage={analysisGradcam}
-                  caseId={analysisCaseId}
-                  onAnalyzeAnother={resetAnalysis}
-                  onNavigateToHistory={() => navigate(ROUTES.history)}
-                />
-              </AppLayout>
-              )
-            } />
-            <Route path={ROUTES.history} element={
-              <AppLayout onLogout={handleRequestLogout}>
-                <HistoryScreen
-                  onBack={() => navigate(ROUTES.dashboard)}
-                  onViewDetails={handleViewHistoryDetail}
-                />
-              </AppLayout>
-            } />
-            <Route path={ROUTES.historyDetail} element={
-              !selectedHistoryItem ? <Navigate to={ROUTES.history} replace /> : (
-              <AppLayout onLogout={handleRequestLogout}>
-                <HistoryDetailScreen
-                  key={selectedHistoryItem?.id}
-                  item={selectedHistoryItem}
-                  onBack={() => navigate(ROUTES.history)}
-                />
-              </AppLayout>
-              )
-            } />
-            <Route path={ROUTES.trends} element={
-              <AppLayout onLogout={handleRequestLogout}>
-                <TrendsScreen onBack={() => navigate(ROUTES.dashboard)} />
-              </AppLayout>
-            } />
-            <Route path={ROUTES.error} element={
-              <AppLayout onLogout={handleRequestLogout}>
-                <ErrorScreen
-                  onBackToUpload={resetAnalysis}
-                  onRetry={analysisRetryable && selectedImage ? () => { setAnalysisError(null); setAnalysisRetryable(false); navigate(ROUTES.processing); } : undefined}
-                  message={analysisError ?? undefined}
-                />
-              </AppLayout>
-            } />
-            <Route path={ROUTES.about} element={
-              <AppLayout onLogout={handleRequestLogout}>
-                <AboutScreen onBack={() => navigate(ROUTES.dashboard)} />
-              </AppLayout>
-            } />
-            <Route path={ROUTES.help} element={
-              <AppLayout onLogout={handleRequestLogout}>
-                <HelpScreen onBack={() => navigate(ROUTES.dashboard)} />
-              </AppLayout>
-            } />
-            <Route path={ROUTES.profile} element={
-              <AppLayout onLogout={handleRequestLogout}>
-                <ProfileScreen onBack={() => navigate(ROUTES.dashboard)} />
-              </AppLayout>
-            } />
+            <Route
+              path={ROUTES.dashboard}
+              element={
+                <AppLayout onLogout={handleRequestLogout}>
+                  <DashboardScreen
+                    onNavigateToUpload={() => navigate(ROUTES.upload)}
+                    onNavigateToHistory={() => navigate(ROUTES.history)}
+                    onNavigateToTrends={() => navigate(ROUTES.trends)}
+                  />
+                </AppLayout>
+              }
+            />
+            <Route
+              path={ROUTES.upload}
+              element={
+                <AppLayout onLogout={handleRequestLogout}>
+                  <UploadScreen
+                    selectedImage={selectedImage}
+                    onImageSelect={setSelectedImage}
+                    onBack={() => navigate(ROUTES.dashboard)}
+                    onRunClassification={() => navigate(ROUTES.processing)}
+                    onError={(msg) => {
+                      setAnalysisError(msg ?? null);
+                      navigate(ROUTES.error);
+                    }}
+                  />
+                </AppLayout>
+              }
+            />
+            <Route
+              path={ROUTES.processing}
+              element={
+                !selectedImage ? (
+                  <Navigate to={ROUTES.upload} replace />
+                ) : (
+                  <AppLayout onLogout={handleRequestLogout}>
+                    <ProcessingScreen
+                      image={selectedImage}
+                      onComplete={(results, gradcamImage) => {
+                        const caseId = crypto.randomUUID();
+                        setAnalysisCaseId(caseId);
+                        setAnalysisResults(results);
+                        setAnalysisGradcam(gradcamImage ?? null);
+                        navigate(ROUTES.results);
+                      }}
+                      onError={(msg, retryable) => {
+                        setAnalysisError(msg ?? null);
+                        setAnalysisRetryable(retryable ?? false);
+                        navigate(ROUTES.error);
+                      }}
+                    />
+                  </AppLayout>
+                )
+              }
+            />
+            <Route
+              path={ROUTES.results}
+              element={
+                !selectedImage || !analysisResults || !analysisCaseId ? (
+                  <Navigate to={ROUTES.upload} replace />
+                ) : (
+                  <AppLayout onLogout={handleRequestLogout}>
+                    <ResultsScreen
+                      image={selectedImage}
+                      results={analysisResults}
+                      gradcamImage={analysisGradcam}
+                      caseId={analysisCaseId}
+                      onAnalyzeAnother={resetAnalysis}
+                      onNavigateToHistory={() => navigate(ROUTES.history)}
+                    />
+                  </AppLayout>
+                )
+              }
+            />
+            <Route
+              path={ROUTES.history}
+              element={
+                <AppLayout onLogout={handleRequestLogout}>
+                  <HistoryScreen
+                    onBack={() => navigate(ROUTES.dashboard)}
+                    onViewDetails={handleViewHistoryDetail}
+                  />
+                </AppLayout>
+              }
+            />
+            <Route
+              path={ROUTES.historyDetail}
+              element={
+                !selectedHistoryItem ? (
+                  <Navigate to={ROUTES.history} replace />
+                ) : (
+                  <AppLayout onLogout={handleRequestLogout}>
+                    <HistoryDetailScreen
+                      key={selectedHistoryItem?.id}
+                      item={selectedHistoryItem}
+                      onBack={() => navigate(ROUTES.history)}
+                    />
+                  </AppLayout>
+                )
+              }
+            />
+            <Route
+              path={ROUTES.trends}
+              element={
+                <AppLayout onLogout={handleRequestLogout}>
+                  <TrendsScreen onBack={() => navigate(ROUTES.dashboard)} />
+                </AppLayout>
+              }
+            />
+            <Route
+              path={ROUTES.error}
+              element={
+                <AppLayout onLogout={handleRequestLogout}>
+                  <ErrorScreen
+                    onBackToUpload={resetAnalysis}
+                    onRetry={
+                      analysisRetryable && selectedImage
+                        ? () => {
+                            setAnalysisError(null);
+                            setAnalysisRetryable(false);
+                            navigate(ROUTES.processing);
+                          }
+                        : undefined
+                    }
+                    message={analysisError ?? undefined}
+                  />
+                </AppLayout>
+              }
+            />
+            <Route
+              path={ROUTES.about}
+              element={
+                <AppLayout onLogout={handleRequestLogout}>
+                  <AboutScreen onBack={() => navigate(ROUTES.dashboard)} />
+                </AppLayout>
+              }
+            />
+            <Route
+              path={ROUTES.help}
+              element={
+                <AppLayout onLogout={handleRequestLogout}>
+                  <HelpScreen onBack={() => navigate(ROUTES.dashboard)} />
+                </AppLayout>
+              }
+            />
+            <Route
+              path={ROUTES.profile}
+              element={
+                <AppLayout onLogout={handleRequestLogout}>
+                  <ProfileScreen onBack={() => navigate(ROUTES.dashboard)} />
+                </AppLayout>
+              }
+            />
 
             {/* Fallbacks */}
-            <Route path="*"  element={<Navigate to="/" replace />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>
 
@@ -376,10 +474,7 @@ const App: React.FC = () => {
         {showLogoutConfirm && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
             <Suspense fallback={null}>
-              <LogoutConfirmScreen
-                onConfirm={handleConfirmLogout}
-                onCancel={handleCancelLogout}
-              />
+              <LogoutConfirmScreen onConfirm={handleConfirmLogout} onCancel={handleCancelLogout} />
             </Suspense>
           </div>
         )}

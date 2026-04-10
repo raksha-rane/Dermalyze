@@ -25,13 +25,13 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ onLogout, mobileOpen, onMobileClose }) => {
-  const navigate   = useNavigate();
-  const location   = useLocation();
+  const navigate = useNavigate();
+  const location = useLocation();
 
   const [expanded, setExpanded] = useState<boolean>(true);
-  const [userId,      setUserId]      = useState('');
-  const [userEmail,   setUserEmail]   = useState('');
-  const [userName,    setUserName]    = useState('');
+  const [userId, setUserId] = useState('');
+  const [userEmail, setUserEmail] = useState('');
+  const [userName, setUserName] = useState('');
 
   // Persist collapse preference (scoped to user to avoid leaking UX state between accounts)
   useEffect(() => {
@@ -64,8 +64,15 @@ const Sidebar: React.FC<SidebarProps> = ({ onLogout, mobileOpen, onMobileClose }
   };
 
   const initials = userName
-    ? userName.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
-    : userEmail ? userEmail[0].toUpperCase() : '?';
+    ? userName
+        .split(' ')
+        .map((n) => n[0])
+        .join('')
+        .toUpperCase()
+        .slice(0, 2)
+    : userEmail
+      ? userEmail[0].toUpperCase()
+      : '?';
 
   // ── NavItem ───────────────────────────────────────────────────────────────
   interface NavItemProps {
@@ -94,9 +101,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onLogout, mobileOpen, onMobileClose }
         aria-current={active ? 'page' : undefined}
       >
         <span className="shrink-0 w-5 h-5">{icon}</span>
-        {expanded && (
-          <span className="flex-1 truncate text-sm font-medium">{label}</span>
-        )}
+        {expanded && <span className="flex-1 truncate text-sm font-medium">{label}</span>}
       </button>
 
       {/* Tooltip — only rendered when sidebar is collapsed */}

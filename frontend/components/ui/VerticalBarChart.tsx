@@ -19,13 +19,13 @@ interface VerticalBarChartProps {
 // Gentle, eye-friendly color palette - consistent across the app
 export const GENTLE_COLORS = {
   // Condition-specific colors (softer versions)
-  mel: '#f87171',    // Soft rose (critical)
-  bcc: '#fb923c',    // Soft orange (high)
-  akiec: '#fbbf24',  // Soft amber (moderate)
-  bkl: '#34d399',    // Soft emerald (low)
-  df: '#22d3ee',     // Soft cyan (low)
-  nv: '#a78bfa',     // Soft violet (low)
-  vasc: '#f472b6',   // Soft pink (low)
+  mel: '#f87171', // Soft rose (critical)
+  bcc: '#fb923c', // Soft orange (high)
+  akiec: '#fbbf24', // Soft amber (moderate)
+  bkl: '#34d399', // Soft emerald (low)
+  df: '#22d3ee', // Soft cyan (low)
+  nv: '#a78bfa', // Soft violet (low)
+  vasc: '#f472b6', // Soft pink (low)
 
   // Generic palette for charts
   palette: [

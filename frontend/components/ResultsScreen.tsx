@@ -69,14 +69,14 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({
 }) => {
   const { invalidateAll } = useDataCache();
   const [loading, setLoading] = useState(true);
-  const [saveFailed,     setSaveFailed]     = useState(false);
-  const [saveCompleted,  setSaveCompleted]  = useState(false);
-  const [noteText,       setNoteText]       = useState('');
-  const [savingNote,     setSavingNote]     = useState(false);
-  const [noteSaved,      setNoteSaved]      = useState(false);
-  const [noteError,      setNoteError]      = useState<string | null>(null);
-  const [clinicianName,  setClinicianName]  = useState<string>('');
-  const [exportingPdf,   setExportingPdf]   = useState(false);
+  const [saveFailed, setSaveFailed] = useState(false);
+  const [saveCompleted, setSaveCompleted] = useState(false);
+  const [noteText, setNoteText] = useState('');
+  const [savingNote, setSavingNote] = useState(false);
+  const [noteSaved, setNoteSaved] = useState(false);
+  const [noteError, setNoteError] = useState<string | null>(null);
+  const [clinicianName, setClinicianName] = useState<string>('');
+  const [exportingPdf, setExportingPdf] = useState(false);
 
   // Doherty Threshold: skeleton -> content in < 400ms
   useEffect(() => {
@@ -87,10 +87,13 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({
   // Fetch clinician name for PDF report
   useEffect(() => {
     const fetchClinicianName = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (user) {
         // Prefer display name from metadata, fallback to email
-        const name = user.user_metadata?.full_name || user.user_metadata?.name || user.email || 'Unknown';
+        const name =
+          user.user_metadata?.full_name || user.user_metadata?.name || user.email || 'Unknown';
         setClinicianName(name);
       }
     };
@@ -124,7 +127,9 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({
 
     const saveRecord = async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
         if (!user) return;
 
         // Upload image to Supabase Storage with client-side encryption
@@ -139,7 +144,7 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({
           const optimizedBlob = await optimizeImage(image, {
             maxDimension: 1024,
             quality: 0.75,
-            format: 'image/webp'
+            format: 'image/webp',
           });
 
           // Encrypt the optimized image for privacy
@@ -162,7 +167,7 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({
             const optimizedGradcamBlob = await optimizeImage(gradcamImage, {
               maxDimension: 1024,
               quality: 0.75,
-              format: 'image/webp'
+              format: 'image/webp',
             });
 
             // Encrypt the Grad-CAM image
@@ -172,7 +177,9 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({
             const gradcamPath = `${user.id}/${caseId}_gradcam.${ext}`;
             const { error: gradcamUploadErr } = await supabase.storage
               .from('analysis-images')
-              .upload(gradcamPath, encryptedGradcamBlob, { contentType: 'application/octet-stream' });
+              .upload(gradcamPath, encryptedGradcamBlob, {
+                contentType: 'application/octet-stream',
+              });
 
             if (!gradcamUploadErr) {
               gradcam_image_url = gradcamPath;
@@ -213,7 +220,9 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({
     setSavingNote(true);
     setNoteError(null);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
       const trimmed = noteText.trim() || null;
       const { data: updated, error } = await supabase
@@ -232,9 +241,10 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({
       setTimeout(() => setNoteSaved(false), 3000);
     } catch (err: unknown) {
       // Differentiate between database errors and other errors
-      const errorMessage = err instanceof Error && err.message === 'Not authenticated'
-        ? 'Authentication expired. Please log in again.'
-        : 'Could not save note. Please check your connection and try again.';
+      const errorMessage =
+        err instanceof Error && err.message === 'Not authenticated'
+          ? 'Authentication expired. Please log in again.'
+          : 'Could not save note. Please check your connection and try again.';
       setNoteError(errorMessage);
     } finally {
       setSavingNote(false);
@@ -299,13 +309,19 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({
       {/* MAIN CONTENT */}
       <main className="max-w-6xl mx-auto w-full px-4 sm:px-6 py-8 flex flex-col gap-6">
         {saveFailed && (
-          <div role="alert" className="p-3 bg-amber-50 border border-amber-200 text-amber-700 text-xs rounded-lg font-medium">
-            This result could not be saved to your history. Please take a screenshot or note the result for your records.
+          <div
+            role="alert"
+            className="p-3 bg-amber-50 border border-amber-200 text-amber-700 text-xs rounded-lg font-medium"
+          >
+            This result could not be saved to your history. Please take a screenshot or note the
+            result for your records.
           </div>
         )}
         {/* Case metadata bar */}
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs">
-          <h1 className="text-sm font-semibold text-slate-500 uppercase tracking-widest">Analysis Result</h1>
+          <h1 className="text-sm font-semibold text-slate-500 uppercase tracking-widest">
+            Analysis Result
+          </h1>
           <div className="flex items-center gap-1.5">
             <span className="font-bold text-slate-400 uppercase tracking-widest">Case ID:</span>
             <span className="font-semibold text-slate-700 tabular-nums">{caseIdDisplay}</span>
@@ -335,18 +351,22 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({
         {/* CLINICIAN NOTES */}
         {!saveFailed && (
           <section className="bg-white rounded-xl border border-slate-400 shadow-sm p-5">
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Clinician Notes</p>
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">
+              Clinician Notes
+            </p>
             <textarea
               value={noteText}
-              onChange={(e) => { setNoteText(e.target.value); setNoteSaved(false); setNoteError(null); }}
+              onChange={(e) => {
+                setNoteText(e.target.value);
+                setNoteSaved(false);
+                setNoteError(null);
+              }}
               rows={3}
               maxLength={2000}
               placeholder="Add clinical observations, follow-up plans, or patient notes…"
               className="w-full text-sm text-slate-700 border border-slate-300 rounded-lg p-3 resize-none focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-transparent placeholder:text-slate-300"
             />
-            {noteError && (
-              <p className="text-xs text-red-500 font-medium mt-1">{noteError}</p>
-            )}
+            {noteError && <p className="text-xs text-red-500 font-medium mt-1">{noteError}</p>}
             <div className="flex items-center justify-between mt-2">
               <span className="text-xs text-slate-300">{noteText.length}/2000</span>
               <div className="flex items-center gap-2">
@@ -362,12 +382,27 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({
                   {savingNote ? (
                     <>
                       <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        />
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                        />
                       </svg>
                       Saving…
                     </>
-                  ) : !saveCompleted ? 'Saving record…' : 'Save note'}
+                  ) : !saveCompleted ? (
+                    'Saving record…'
+                  ) : (
+                    'Save note'
+                  )}
                 </button>
               </div>
             </div>
@@ -385,15 +420,31 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({
               {exportingPdf ? (
                 <>
                   <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                    />
                   </svg>
                   Generating Report…
                 </>
               ) : (
                 <>
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    />
                   </svg>
                   Download PDF Report
                 </>
@@ -403,7 +454,12 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({
           <Button onClick={onAnalyzeAnother}>
             <span className="flex items-center justify-center gap-2">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                />
               </svg>
               Analyze Another Image
             </span>
@@ -414,7 +470,12 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({
           >
             <span className="flex items-center justify-center gap-2">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
               </svg>
               View Past Analyses
             </span>

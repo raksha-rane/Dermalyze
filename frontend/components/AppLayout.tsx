@@ -40,10 +40,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, onLogout }) => {
           >
             <Bars3Icon className="w-5 h-5" />
           </button>
-          <button
-            onClick={() => navigate(ROUTES.dashboard)}
-            className="flex items-center gap-2"
-          >
+          <button onClick={() => navigate(ROUTES.dashboard)} className="flex items-center gap-2">
             <div className="bg-teal-600 rounded-lg p-1.5">
               <ShieldCheckIcon className="w-4 h-4 text-white" />
             </div>

@@ -185,9 +185,7 @@ const LineChart: React.FC<LineChartProps> = ({
           <div className="w-3 h-3 rounded-full" style={{ backgroundColor: color }} />
           <span>Analyses</span>
         </div>
-        {showConfidence && (
-          <span className="text-slate-400">• Hover points for details</span>
-        )}
+        {showConfidence && <span className="text-slate-400">• Hover points for details</span>}
       </div>
     </div>
   );
