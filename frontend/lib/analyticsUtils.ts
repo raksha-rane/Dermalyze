@@ -1,4 +1,12 @@
 import type { AnalysisHistoryItem } from './types';
+import {
+  CLASS_DEFINITIONS,
+  CLASS_COLORS,
+  CLASSES_BY_RISK,
+  RISK_COLORS,
+  HIGH_RISK_CLASS_IDS,
+  type RiskLevel,
+} from './classDefinitions';
 
 export interface TimeSeriesData {
   date: string;
@@ -24,19 +32,8 @@ export interface DiagnosisData {
   count: number;
   percentage: number;
   color: string;
-  riskLevel: 'critical' | 'high' | 'moderate' | 'low';
+  riskLevel: RiskLevel;
 }
-
-// Clinical condition names and risk categorization (using gentle colors)
-const CONDITION_INFO: Record<string, { name: string; color: string; riskLevel: 'critical' | 'high' | 'moderate' | 'low' }> = {
-  mel: { name: 'Melanoma', color: '#f87171', riskLevel: 'critical' },           // Soft rose
-  bcc: { name: 'Basal Cell Carcinoma', color: '#fb923c', riskLevel: 'high' },   // Soft orange
-  akiec: { name: 'Actinic Keratoses', color: '#fbbf24', riskLevel: 'moderate' }, // Soft amber
-  bkl: { name: 'Benign Keratosis', color: '#34d399', riskLevel: 'low' },        // Soft emerald
-  df: { name: 'Dermatofibroma', color: '#22d3ee', riskLevel: 'low' },           // Soft cyan
-  nv: { name: 'Melanocytic Nevi', color: '#a78bfa', riskLevel: 'low' },         // Soft violet
-  vasc: { name: 'Vascular Lesions', color: '#f472b6', riskLevel: 'low' },       // Soft pink
-};
 
 /**
  * Aggregate analyses by time period (day, week, or month)
@@ -87,22 +84,23 @@ export function aggregateByTimePeriod(
  * Calculate risk level distribution
  */
 export function getRiskDistribution(items: AnalysisHistoryItem[]): RiskDistribution[] {
-  const riskMap = {
-    critical: { types: ['mel'], color: '#dc2626', label: 'Critical' },
-    high: { types: ['bcc'], color: '#ea580c', label: 'High' },
-    moderate: { types: ['akiec'], color: '#f59e0b', label: 'Moderate' },
-    low: { types: ['bkl', 'df', 'nv', 'vasc'], color: '#10b981', label: 'Low' },
+  const riskConfig: Record<RiskLevel, { label: string }> = {
+    critical: { label: 'Critical' },
+    high: { label: 'High' },
+    moderate: { label: 'Moderate' },
+    low: { label: 'Low' },
   };
 
   const distribution: RiskDistribution[] = [];
 
-  Object.entries(riskMap).forEach(([level, config]) => {
-    const count = items.filter((item) => config.types.includes(item.classId)).length;
+  (Object.keys(riskConfig) as RiskLevel[]).forEach((level) => {
+    const classIds = CLASSES_BY_RISK[level];
+    const count = items.filter((item) => classIds.includes(item.classId as never)).length;
     if (count > 0) {
       distribution.push({
-        level: config.label,
+        level: riskConfig[level].label,
         count,
-        color: config.color,
+        color: RISK_COLORS[level],
       });
     }
   });
@@ -152,11 +150,11 @@ export function getSummaryStats(items: AnalysisHistoryItem[]) {
     };
   }
 
-  const avgConfidence =
-    items.reduce((sum, item) => sum + item.confidence, 0) / items.length;
+  const avgConfidence = items.reduce((sum, item) => sum + item.confidence, 0) / items.length;
 
-  const highRiskTypes = ['mel', 'bcc', 'akiec'];
-  const highRiskCount = items.filter((item) => highRiskTypes.includes(item.classId)).length;
+  const highRiskCount = items.filter((item) =>
+    HIGH_RISK_CLASS_IDS.includes(item.classId as never)
+  ).length;
 
   // Find most recent analysis using raw timestamps
   const dates = items.map((item) => new Date(item.createdAt));
@@ -174,16 +172,8 @@ export function getSummaryStats(items: AnalysisHistoryItem[]) {
   };
 }
 
-// Gentle color palette - consistent across the app
-export const GENTLE_CONDITION_COLORS: Record<string, string> = {
-  mel: '#f87171',    // Soft rose (critical)
-  bcc: '#fb923c',    // Soft orange (high)
-  akiec: '#fbbf24',  // Soft amber (moderate)
-  bkl: '#34d399',    // Soft emerald (low)
-  df: '#22d3ee',     // Soft cyan (low)
-  nv: '#a78bfa',     // Soft violet (low)
-  vasc: '#f472b6',   // Soft pink (low)
-};
+// Re-export CLASS_COLORS for backward compatibility
+export { CLASS_COLORS as GENTLE_CONDITION_COLORS } from './classDefinitions';
 
 export interface PredictionBreakdownData {
   id: string;
@@ -234,7 +224,16 @@ export function getPredictionBreakdown(
   }
 
   // Count items in each period
-  const palette = ['#6ee7b7', '#7dd3fc', '#c4b5fd', '#fda4af', '#fcd34d', '#a5f3fc', '#d9f99d', '#fed7aa'];
+  const palette = [
+    '#6ee7b7',
+    '#7dd3fc',
+    '#c4b5fd',
+    '#fda4af',
+    '#fcd34d',
+    '#a5f3fc',
+    '#d9f99d',
+    '#fed7aa',
+  ];
 
   return periods.map((p, index) => {
     const count = items.filter((item) => {
@@ -265,24 +264,24 @@ export function getDiagnosisBreakdown(items: AnalysisHistoryItem[]): DiagnosisDa
     countMap.set(item.classId, current + 1);
   });
 
-  // Build diagnosis data with clinical info
+  // Build diagnosis data with clinical info from single source of truth
   const diagnoses: DiagnosisData[] = [];
   countMap.forEach((count, id) => {
-    const info = CONDITION_INFO[id];
-    if (info) {
+    const classDef = CLASS_DEFINITIONS[id as keyof typeof CLASS_DEFINITIONS];
+    if (classDef) {
       diagnoses.push({
         id,
-        name: info.name,
+        name: classDef.name,
         count,
         percentage: Math.round((count / items.length) * 1000) / 10,
-        color: info.color,
-        riskLevel: info.riskLevel,
+        color: classDef.color,
+        riskLevel: classDef.riskLevel,
       });
     }
   });
 
   // Sort by risk level (critical first), then by count
-  const riskOrder = { critical: 0, high: 1, moderate: 2, low: 3 };
+  const riskOrder: Record<RiskLevel, number> = { critical: 0, high: 1, moderate: 2, low: 3 };
   return diagnoses.sort((a, b) => {
     const riskDiff = riskOrder[a.riskLevel] - riskOrder[b.riskLevel];
     if (riskDiff !== 0) return riskDiff;
