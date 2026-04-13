@@ -35,6 +35,30 @@ import optuna
 import yaml
 
 
+def get_resume_trial_counts(study_name: str, storage_url: Optional[str]) -> Tuple[int, int]:
+    """Return (total_trials, complete_or_pruned_trials) for an existing study."""
+    if not storage_url:
+        return 0, 0
+
+    try:
+        study = optuna.load_study(study_name=study_name, storage=storage_url)
+    except Exception:
+        # If study does not exist yet (or cannot be inspected), treat as fresh.
+        return 0, 0
+
+    total_trials = len(study.trials)
+    completed_or_pruned = len(
+        study.get_trials(
+            deepcopy=False,
+            states=(
+                optuna.trial.TrialState.COMPLETE,
+                optuna.trial.TrialState.PRUNED,
+            ),
+        )
+    )
+    return total_trials, completed_or_pruned
+
+
 def load_yaml(path: Path) -> Dict[str, Any]:
     with open(path, "r") as file:
         data = yaml.safe_load(file)
@@ -509,7 +533,11 @@ def main() -> None:
         "--sampler-seed",
         type=int,
         default=42,
-        help="Seed for Optuna sampler reproducibility",
+        help=(
+            "Base seed for Optuna sampler reproducibility. "
+            "When resuming an existing study, the script offsets this seed "
+            "to avoid replaying startup suggestions."
+        ),
     )
     parser.add_argument(
         "--objective-metric",
@@ -569,7 +597,38 @@ def main() -> None:
     base_config = ensure_existing_data_paths(base_config, project_root)
 
     direction = "maximize"
-    sampler = optuna.samplers.TPESampler(seed=args.sampler_seed)
+
+    # Make sampler resume-aware to avoid replaying early random startup
+    # suggestions when the same study is continued in multiple short runs.
+    total_existing_trials, observed_existing_trials = get_resume_trial_counts(
+        args.study_name, args.storage
+    )
+    tpe_startup_trials = 10
+    if observed_existing_trials > 0:
+        # If a study already has completed/pruned trials, set startup threshold
+        # at or below that count so resumed runs skip startup replay.
+        tpe_startup_trials = min(tpe_startup_trials, observed_existing_trials)
+
+    sampler_seed = args.sampler_seed
+    if total_existing_trials > 0:
+        # Offset deterministic seed by prior trials so resumed runs do not
+        # restart the same suggestion sequence from the beginning.
+        sampler_seed = args.sampler_seed + total_existing_trials
+
+    sampler = optuna.samplers.TPESampler(
+        seed=sampler_seed,
+        n_startup_trials=tpe_startup_trials,
+    )
+
+    if total_existing_trials > 0:
+        print(
+            "Resuming existing study with "
+            f"{total_existing_trials} prior trials "
+            f"({observed_existing_trials} complete/pruned). "
+            f"Sampler seed: {sampler_seed} (base={args.sampler_seed}), "
+            f"n_startup_trials={tpe_startup_trials}."
+        )
+
     # NOTE: MedianPruner is currently inactive because no intermediate metrics are
     # reported during training. Each trial runs to completion and only returns a
     # final score. To enable pruning, train.py would need to be modified to:
