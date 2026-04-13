@@ -80,11 +80,7 @@ const ProbabilityChart: React.FC<ProbabilityChartProps> = ({ classes, predictedC
               <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
                 <div
                   className={`h-full rounded-full transition-all duration-700 ease-out ${
-                    isPredicted
-                      ? 'bg-teal-600'
-                      : isHovered
-                      ? 'bg-slate-400'
-                      : 'bg-slate-300'
+                    isPredicted ? 'bg-teal-600' : isHovered ? 'bg-slate-400' : 'bg-slate-300'
                   }`}
                   style={{ width: `${Math.max(cls.score, 0.5)}%` }}
                 />

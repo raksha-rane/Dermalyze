@@ -24,12 +24,7 @@ const ImageCard: React.FC<ImageCardProps> = ({ imageUrl, alt = 'Analyzed lesion'
       </h3>
       <div className="aspect-square w-full bg-slate-50 rounded-lg overflow-hidden border border-slate-100 flex items-center justify-center">
         {imageUrl ? (
-          <img
-            src={imageUrl}
-            alt={alt}
-            className="w-full h-full object-cover"
-            draggable={false}
-          />
+          <img src={imageUrl} alt={alt} className="w-full h-full object-cover" draggable={false} />
         ) : (
           <div className="text-slate-300 flex flex-col items-center gap-2">
             <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">

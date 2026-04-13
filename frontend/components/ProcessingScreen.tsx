@@ -1,4 +1,3 @@
-
 import React, { useEffect, useRef, useState } from 'react';
 import { classifyImage, ApiError } from '../lib/api';
 import type { ClassResult } from '../lib/types';
@@ -9,11 +8,7 @@ interface ProcessingScreenProps {
   onError: (message?: string, retryable?: boolean) => void;
 }
 
-const ProcessingScreen: React.FC<ProcessingScreenProps> = ({
-  image,
-  onComplete,
-  onError,
-}) => {
+const ProcessingScreen: React.FC<ProcessingScreenProps> = ({ image, onComplete, onError }) => {
   const [statusText, setStatusText] = useState('Validating image type…');
   const calledRef = useRef(false); // prevent double-invoke in React StrictMode
 
@@ -43,7 +38,11 @@ const ProcessingScreen: React.FC<ProcessingScreenProps> = ({
           err instanceof Error
             ? err.message
             : 'An unexpected error occurred during classification.';
-        const retryable = err instanceof ApiError && err.status === 503;
+        // Retryable: 503 (service unavailable), 429 (rate limit), 500 (server error), network errors
+        const retryable =
+          (err instanceof ApiError &&
+            (err.status === 503 || err.status === 429 || err.status === 500)) ||
+          (err instanceof TypeError && err.message.includes('fetch')); // Network errors
         onError(msg, retryable);
       }
     };
@@ -60,14 +59,23 @@ const ProcessingScreen: React.FC<ProcessingScreenProps> = ({
       <main className="flex-1 flex items-center justify-center p-6 sm:p-12">
         <div className="max-w-md w-full text-center">
           <div className="bg-white rounded-3xl border border-slate-300 p-12 sm:p-16 shadow-sm flex flex-col items-center">
-
             <div className="relative mb-10">
               <div className="w-20 h-20 rounded-full border-4 border-slate-200" />
               <div className="absolute top-0 left-0 w-20 h-20 rounded-full border-4 border-teal-600 border-t-transparent animate-spin" />
               <div className="absolute inset-0 flex items-center justify-center">
                 <div className="w-10 h-10 bg-teal-50 rounded-full animate-pulse flex items-center justify-center">
-                  <svg className="w-5 h-5 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  <svg
+                    className="w-5 h-5 text-teal-600"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                    />
                   </svg>
                 </div>
               </div>

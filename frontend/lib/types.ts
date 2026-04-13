@@ -19,3 +19,21 @@ export interface AnalysisHistoryItem {
   allScores?: ClassResult[];
   notes?: string;
 }
+
+export interface DashStats {
+  total: number;
+  thisMonth: number;
+  avgConfidence: number | null;
+  needsReview: number;
+  classCounts: { id: string; name: string; count: number }[];
+  lastAnalysis: {
+    className: string;
+    classId: string;
+    confidence: number;
+    date: string;
+    imageUrl: string | null;
+  } | null;
+}
+
+// Re-export from single source of truth for backward compatibility
+export { CLASS_NAMES as SHORT_CLASS_NAMES } from './classDefinitions';

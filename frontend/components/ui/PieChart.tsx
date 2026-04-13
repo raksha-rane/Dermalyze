@@ -71,30 +71,17 @@ const PieChart: React.FC<PieChartProps> = ({ data, title }) => {
 
       <div className="flex flex-col md:flex-row items-center gap-6">
         {/* Pie Chart */}
-        <svg
-          viewBox={`0 0 ${size} ${size}`}
-          className="w-48 h-48 shrink-0"
-        >
+        <svg viewBox={`0 0 ${size} ${size}`} className="w-48 h-48 shrink-0">
           {slices.map((slice, i) => (
             <g key={i}>
-              <path
-                d={slice.path}
-                fill={slice.color}
-                stroke="white"
-                strokeWidth="2"
-              />
+              <path d={slice.path} fill={slice.color} stroke="white" strokeWidth="2" />
               <title>
                 {slice.level}: {slice.count} ({slice.percentage}%)
               </title>
             </g>
           ))}
           {/* Center circle for donut effect */}
-          <circle
-            cx={center}
-            cy={center}
-            r={radius * 0.6}
-            fill="white"
-          />
+          <circle cx={center} cy={center} r={radius * 0.6} fill="white" />
           {/* Total in center */}
           <text
             x={center}
@@ -106,13 +93,7 @@ const PieChart: React.FC<PieChartProps> = ({ data, title }) => {
           >
             {total}
           </text>
-          <text
-            x={center}
-            y={center + 15}
-            fontSize="12"
-            fill="#94a3b8"
-            textAnchor="middle"
-          >
+          <text x={center} y={center + 15} fontSize="12" fill="#94a3b8" textAnchor="middle">
             Total
           </text>
         </svg>
@@ -122,10 +103,7 @@ const PieChart: React.FC<PieChartProps> = ({ data, title }) => {
           {slices.map((slice, i) => (
             <div key={i} className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-2">
-                <div
-                  className="w-3 h-3 rounded-full"
-                  style={{ backgroundColor: slice.color }}
-                />
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: slice.color }} />
                 <span className="text-sm text-slate-700">{slice.level}</span>
               </div>
               <div className="flex items-center gap-2">

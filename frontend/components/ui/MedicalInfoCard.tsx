@@ -43,9 +43,7 @@ const MedicalInfoCard: React.FC<MedicalInfoCardProps> = ({ info }) => {
             </dt>
             <dd
               className={`text-sm leading-relaxed ${
-                field.highlight
-                  ? `font-semibold ${riskStyle.text}`
-                  : 'text-slate-600'
+                field.highlight ? `font-semibold ${riskStyle.text}` : 'text-slate-600'
               }`}
             >
               {field.value}

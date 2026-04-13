@@ -12,12 +12,12 @@ export class ApiError extends Error {
 
 interface ClassifyResponse {
   classes: ClassResult[];
-  gradcam_image?: string | null;  // Base64-encoded PNG heatmap overlay
+  gradcam_image?: string | null; // Base64-encoded PNG heatmap overlay
 }
 
 export interface ClassifyResult {
   classes: ClassResult[];
-  gradcamImage?: string;  // Base64 data URL for display
+  gradcamImage?: string; // Base64 data URL for display
 }
 
 const getApiBaseUrl = (): string => {
@@ -47,24 +47,15 @@ export const classifyImage = async (
   imageDataUrl: string,
   includeGradcam: boolean = true
 ): Promise<ClassifyResult> => {
-  // Get current Supabase session and check expiry
-  let { data: { session }, error: sessionError } = await supabase.auth.getSession();
+  // Get current Supabase session
+  // Supabase auto-refreshes tokens (autoRefreshToken: true in supabase.ts)
+  const {
+    data: { session },
+    error: sessionError,
+  } = await supabase.auth.getSession();
 
   if (sessionError || !session?.access_token) {
     throw new ApiError('Authentication required. Please log in again.', 401);
-  }
-
-  // Check if token will expire within next 60 seconds, refresh if needed
-  const expiresAt = session.expires_at ? session.expires_at * 1000 : 0; // Convert to ms
-  const now = Date.now();
-  const expiresInMs = expiresAt - now;
-
-  if (expiresInMs < 60_000) { // Less than 60 seconds remaining
-    const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-    if (refreshError || !refreshData.session?.access_token) {
-      throw new ApiError('Session expired. Please log in again.', 401);
-    }
-    session = refreshData.session;
   }
 
   const imageBlob = await (await fetch(imageDataUrl)).blob();
@@ -80,7 +71,7 @@ export const classifyImage = async (
   const response = await fetch(url.toString(), {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${session.access_token}`,
+      Authorization: `Bearer ${session.access_token}`,
     },
     body: formData,
   });

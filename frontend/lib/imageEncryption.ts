@@ -24,13 +24,9 @@ async function deriveEncryptionKey(userId: string): Promise<CryptoKey> {
   const keyMaterial = new TextEncoder().encode(userId);
 
   // Import as raw key material
-  const baseKey = await crypto.subtle.importKey(
-    'raw',
-    keyMaterial,
-    { name: 'PBKDF2' },
-    false,
-    ['deriveKey']
-  );
+  const baseKey = await crypto.subtle.importKey('raw', keyMaterial, { name: 'PBKDF2' }, false, [
+    'deriveKey',
+  ]);
 
   // Derive a proper AES-GCM key using PBKDF2
   // Salt is static per user (using user ID as salt ensures deterministic key)
@@ -64,10 +60,7 @@ async function deriveEncryptionKey(userId: string): Promise<CryptoKey> {
  * @param userId - User's ID for key derivation
  * @returns Encrypted blob (IV + encrypted data + auth tag)
  */
-export async function encryptImage(
-  imageBlob: Blob,
-  userId: string
-): Promise<Blob> {
+export async function encryptImage(imageBlob: Blob, userId: string): Promise<Blob> {
   try {
     // Derive encryption key from user ID
     const key = await deriveEncryptionKey(userId);

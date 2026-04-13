@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { ShieldCheckIcon } from '@heroicons/react/24/outline';
 import Button from './ui/Button';
@@ -18,9 +17,9 @@ const EmailVerificationScreen: React.FC<EmailVerificationScreenProps> = ({
   onNavigateToHome,
   onResendEmail,
 }) => {
-  const [resending,  setResending]  = React.useState(false);
-  const [resendMsg,  setResendMsg]  = React.useState<string | null>(null);
-  const [cooldown,   setCooldown]   = React.useState(0); // seconds remaining
+  const [resending, setResending] = React.useState(false);
+  const [resendMsg, setResendMsg] = React.useState<string | null>(null);
+  const [cooldown, setCooldown] = React.useState(0); // seconds remaining
 
   // Tick the cooldown down every second
   React.useEffect(() => {
@@ -52,13 +51,20 @@ const EmailVerificationScreen: React.FC<EmailVerificationScreenProps> = ({
       {/* Header */}
       <header className="w-full bg-white border-b border-slate-200 shadow-sm">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          <button onClick={onNavigateToHome} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+          <button
+            onClick={onNavigateToHome}
+            className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+          >
             <div className="w-11 h-11 bg-teal-600 rounded-xl flex items-center justify-center shadow-sm">
               <ShieldCheckIcon className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-slate-900 tracking-tight leading-tight">Dermalyze</h1>
-              <p className="text-[9px] text-slate-500 uppercase tracking-wider font-semibold leading-tight">Clinical Decision Support</p>
+              <h1 className="text-xl font-bold text-slate-900 tracking-tight leading-tight">
+                Dermalyze
+              </h1>
+              <p className="text-[9px] text-slate-500 uppercase tracking-wider font-semibold leading-tight">
+                Clinical Decision Support
+              </p>
             </div>
           </button>
           <div className="flex items-center gap-3">
@@ -85,7 +91,12 @@ const EmailVerificationScreen: React.FC<EmailVerificationScreenProps> = ({
             <div className="text-center">
               {/* Mail icon */}
               <div className="inline-flex items-center justify-center w-16 h-16 bg-teal-50 rounded-2xl mb-6">
-                <svg className="w-10 h-10 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg
+                  className="w-10 h-10 text-teal-600"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
                   <path
                     strokeLinecap="round"
                     strokeLinejoin="round"
@@ -95,9 +106,7 @@ const EmailVerificationScreen: React.FC<EmailVerificationScreenProps> = ({
                 </svg>
               </div>
 
-              <h2 className="text-2xl font-bold text-slate-900 mb-3">
-                Verify Your Email
-              </h2>
+              <h2 className="text-2xl font-bold text-slate-900 mb-3">Verify Your Email</h2>
 
               <p className="text-slate-600 mb-2 leading-relaxed">
                 We've sent a verification link to:
@@ -107,7 +116,9 @@ const EmailVerificationScreen: React.FC<EmailVerificationScreenProps> = ({
               </p>
 
               <div className="bg-teal-50 border border-teal-200 rounded-xl p-4 mb-6 text-left">
-                <p className="text-xs font-bold text-teal-700 uppercase tracking-widest mb-3">Next Steps</p>
+                <p className="text-xs font-bold text-teal-700 uppercase tracking-widest mb-3">
+                  Next Steps
+                </p>
                 <ol className="space-y-2 text-sm text-teal-800 list-decimal list-inside">
                   <li>Open your email inbox</li>
                   <li>Click the verification link in the email from Dermalyze</li>
@@ -133,9 +144,7 @@ const EmailVerificationScreen: React.FC<EmailVerificationScreenProps> = ({
                 </button>
               </div>
 
-              {resendMsg && (
-                <p className="mt-4 text-xs text-teal-600 font-medium">{resendMsg}</p>
-              )}
+              {resendMsg && <p className="mt-4 text-xs text-teal-600 font-medium">{resendMsg}</p>}
 
               <div className="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-xl">
                 <p className="text-sm text-amber-800 leading-relaxed">
@@ -148,7 +157,8 @@ const EmailVerificationScreen: React.FC<EmailVerificationScreenProps> = ({
 
           {/* Footer Note */}
           <p className="mt-8 text-center text-xs text-slate-400 leading-relaxed px-4">
-            By using this service, you confirm that you are a qualified medical professional using this system in accordance with professional guidelines.
+            By using this service, you confirm that you are a qualified medical professional using
+            this system in accordance with professional guidelines.
           </p>
         </div>
       </div>

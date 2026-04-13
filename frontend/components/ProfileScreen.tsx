@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import Input from './ui/Input';
 import Button from './ui/Button';
@@ -14,26 +13,35 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onBack }) => {
   const [email, setEmail] = useState('');
   const [profileLoading, setProfileLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [profileMsg, setProfileMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [profileMsg, setProfileMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(
+    null
+  );
 
   // ── Change password state ───────────────────────────────────────────────────
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [passwordLoading, setPasswordLoading] = useState(false);
-  const [passwordMsg, setPasswordMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [passwordMsg, setPasswordMsg] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
 
   // ── Delete account state ────────────────────────────────────────────────────
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deleteLoading, setDeleteLoading] = useState(false);
-  const [deleteMsg, setDeleteMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [deleteMsg, setDeleteMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(
+    null
+  );
 
   // ── Load user data on mount ─────────────────────────────────────────────────
   useEffect(() => {
     const loadProfile = async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
         if (user) {
           setEmail(user.email ?? '');
           setFullName(user.user_metadata?.full_name ?? '');
@@ -117,15 +125,15 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onBack }) => {
     setDeleteMsg(null);
     setDeleteLoading(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
       if (!session) throw new Error('Not authenticated');
 
       const userId = session.user.id;
 
       // 1. Delete user's analysis images from storage
-      const { data: files } = await supabase.storage
-        .from('analysis-images')
-        .list(userId);
+      const { data: files } = await supabase.storage.from('analysis-images').list(userId);
       if (files && files.length > 0) {
         const paths = files.map((f) => `${userId}/${f.name}`);
         await supabase.storage.from('analysis-images').remove(paths);
@@ -142,7 +150,10 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onBack }) => {
           // context is the raw Response object when the function returns non-2xx
           const body = await (fnError as unknown as { context: Response }).context.json();
           if (body?.error) errorMessage = body.error;
-          else if (fnError.message && fnError.message !== 'Edge Function returned a non-2xx status code') {
+          else if (
+            fnError.message &&
+            fnError.message !== 'Edge Function returned a non-2xx status code'
+          ) {
             errorMessage = fnError.message;
           }
         } catch {
@@ -174,7 +185,9 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onBack }) => {
       ? email[0].toUpperCase()
       : '?';
 
-  const FeedbackBanner: React.FC<{ msg: { type: 'success' | 'error'; text: string } | null }> = ({ msg }) => {
+  const FeedbackBanner: React.FC<{ msg: { type: 'success' | 'error'; text: string } | null }> = ({
+    msg,
+  }) => {
     if (!msg) return null;
     const isSuccess = msg.type === 'success';
     return (
@@ -216,7 +229,12 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onBack }) => {
             aria-label="Back to Dashboard"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15 19l-7-7 7-7"
+              />
             </svg>
           </button>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">My Profile</h1>
@@ -244,12 +262,7 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onBack }) => {
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
             />
-            <Input
-              label="Email"
-              type="email"
-              value={email}
-              disabled
-            />
+            <Input label="Email" type="email" value={email} disabled />
             <p className="text-[11px] text-slate-400 -mt-2 mb-4 px-0.5">
               Email cannot be changed from this screen for security reasons.
             </p>
@@ -258,8 +271,19 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onBack }) => {
                 {saving ? (
                   <span className="flex items-center justify-center gap-2">
                     <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                      />
                     </svg>
                     Saving…
                   </span>
@@ -274,7 +298,9 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onBack }) => {
         {/* ── Section 2: Change Password ── */}
         <section className="bg-white rounded-3xl border border-slate-300 p-6 sm:p-8 shadow-sm">
           <h2 className="text-lg font-bold text-slate-900 mb-1">Change Password</h2>
-          <p className="text-sm text-slate-500 mb-6">Update your account password. New password must be at least 12 characters.</p>
+          <p className="text-sm text-slate-500 mb-6">
+            Update your account password. New password must be at least 12 characters.
+          </p>
 
           <form onSubmit={handleChangePassword} className="space-y-1">
             <FeedbackBanner msg={passwordMsg} />
@@ -307,8 +333,19 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onBack }) => {
                 {passwordLoading ? (
                   <span className="flex items-center justify-center gap-2">
                     <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                      />
                     </svg>
                     Changing…
                   </span>
@@ -324,8 +361,8 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onBack }) => {
         <section className="bg-white rounded-3xl border border-red-300 p-6 sm:p-8 shadow-sm">
           <h2 className="text-lg font-bold text-red-700 mb-1">Delete Account</h2>
           <p className="text-sm text-slate-500 mb-4 leading-relaxed">
-            Permanently delete your account and all associated analysis data.
-            This action <strong className="text-red-600">cannot be undone</strong>.
+            Permanently delete your account and all associated analysis data. This action{' '}
+            <strong className="text-red-600">cannot be undone</strong>.
           </p>
 
           {!showDeleteConfirm ? (
@@ -360,8 +397,19 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onBack }) => {
                   {deleteLoading ? (
                     <span className="flex items-center justify-center gap-2">
                       <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        />
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                        />
                       </svg>
                       Deleting…
                     </span>

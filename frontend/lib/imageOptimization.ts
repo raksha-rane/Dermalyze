@@ -26,11 +26,7 @@ export async function optimizeImage(
   dataUrl: string,
   options: OptimizationOptions = {}
 ): Promise<Blob> {
-  const {
-    maxDimension = 1024,
-    quality = 0.75,
-    format = 'image/webp'
-  } = options;
+  const { maxDimension = 1024, quality = 0.75, format = 'image/webp' } = options;
 
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -98,7 +94,7 @@ export async function generateThumbnail(
   return optimizeImage(dataUrl, {
     maxDimension,
     quality: 0.7,
-    format: 'image/webp'
+    format: 'image/webp',
   });
 }
 
@@ -110,7 +106,7 @@ export function getOptimizedExtension(format: string = 'image/webp'): string {
   const extensionMap: Record<string, string> = {
     'image/webp': 'webp',
     'image/jpeg': 'jpg',
-    'image/png': 'png'
+    'image/png': 'png',
   };
   return extensionMap[format] || 'webp';
 }
