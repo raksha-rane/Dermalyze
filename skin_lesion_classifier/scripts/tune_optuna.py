@@ -220,13 +220,15 @@ def apply_ham10000_search_space(
 
     model_cfg["dropout_rate"] = trial.suggest_float("dropout_rate", 0.2, 0.6)
 
+    # Empirically best regime on this project: keep augmentation fixed.
+    augmentation_type = "randaugment"
     existing_augmentation = train_cfg.get("augmentation", "randaugment")
     if isinstance(existing_augmentation, dict):
         augmentation_cfg = dict(existing_augmentation)
-        augmentation_cfg["type"] = "randaugment"
+        augmentation_cfg["type"] = augmentation_type
         train_cfg["augmentation"] = augmentation_cfg
     else:
-        train_cfg["augmentation"] = "randaugment"
+        train_cfg["augmentation"] = augmentation_type
 
     use_weighted_sampling = bool(train_cfg.get("use_weighted_sampling", True))
     train_cfg["sampling_weight_power"] = trial.suggest_float(
@@ -246,14 +248,25 @@ def apply_ham10000_search_space(
             "class_weight_power", 0.2, 0.8
         )
 
-    loss_cfg["label_smoothing"] = trial.suggest_float("label_smoothing", 0.01, 0.08)
+    # Keep the loss family fixed to label smoothing.
     loss_cfg["type"] = "label_smoothing"
+    loss_cfg.pop("gamma", None)
+    loss_cfg.pop("focal_gamma", None)
+    loss_cfg["label_smoothing"] = trial.suggest_float("label_smoothing", 0.01, 0.08)
 
     # train.py supports metadata-aware MixUp/CutMix, so keep these tunable for
     # both image-only and metadata-fusion models.
-    train_cfg["mixup_alpha"] = trial.suggest_float("mixup_alpha", 0.0, 0.4)
-    train_cfg["cutmix_alpha"] = trial.suggest_float("cutmix_alpha", 0.0, 0.4)
-    train_cfg["mixup_prob"] = trial.suggest_float("mixup_prob", 0.0, 0.7)
+    mixup_alpha = trial.suggest_float("mixup_alpha", 0.0, 0.4)
+    cutmix_alpha = trial.suggest_float("cutmix_alpha", 0.0, 0.4)
+    mixup_prob = trial.suggest_float("mixup_prob", 0.0, 0.7)
+    # Avoid spending trials on degenerate configs where augmentation probability
+    # is high but both augmentation strengths are effectively disabled.
+    if mixup_alpha < 1e-3 and cutmix_alpha < 1e-3:
+        mixup_prob = 0.0
+
+    train_cfg["mixup_alpha"] = mixup_alpha
+    train_cfg["cutmix_alpha"] = cutmix_alpha
+    train_cfg["mixup_prob"] = mixup_prob
     # Deprecated in train.py; avoid tuning an unused hyperparameter.
     train_cfg.pop("cutmix_prob", None)
 
@@ -261,6 +274,7 @@ def apply_ham10000_search_space(
         "early_stopping_patience", 5, 12
     )
 
+    # Keep scheduler family fixed to cosine annealing.
     scheduler_cfg["type"] = "cosine"
     scheduler_cfg["T_0"] = trial.suggest_int("cosine_T0", 8, 24)
     scheduler_cfg["T_mult"] = trial.suggest_int("cosine_Tmult", 1, 2)
@@ -313,6 +327,9 @@ def resolve_objective(eval_metrics: Dict[str, Any], objective_metric: str) -> fl
         return _get_metric("weighted_f1")
 
     if objective_metric == "macro_recall_f1_mean":
+        direct = eval_metrics.get("macro_recall_f1_mean")
+        if direct is not None:
+            return float(direct)
         macro_recall = _get_metric("macro_recall")
         macro_f1 = _get_metric("macro_f1")
         return (macro_recall + macro_f1) / 2.0
