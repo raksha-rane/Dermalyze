@@ -4,7 +4,6 @@ import { BrowserRouter } from 'react-router-dom';
 import { Analytics } from '@vercel/analytics/react';
 import App from './App';
 import { DataCacheProvider } from './lib/dataCache';
-import { Analytics } from '@vercel/analytics/react';
 import './index.css';
 import '@fontsource/inter/300.css';
 import '@fontsource/inter/400.css';
