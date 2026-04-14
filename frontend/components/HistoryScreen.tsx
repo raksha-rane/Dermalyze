@@ -240,7 +240,7 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ onBack, onViewDetails }) 
                 const encryptedBlob = await response.blob();
 
                 // Decrypt the image
-                const decryptedBlob = await decryptImage(encryptedBlob, userId, 'image/webp');
+                const decryptedBlob = await decryptImage(encryptedBlob, userId);
 
                 // Convert to data URL for display
                 const dataUrl = await blobToDataUrl(decryptedBlob);

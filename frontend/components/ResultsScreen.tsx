@@ -134,7 +134,7 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({
 
         // Upload image to Supabase Storage with client-side encryption
         // Step 1: Optimize to WebP format (~40% size reduction)
-        // Step 2: Encrypt with user-specific key (admin cannot view images)
+        // Step 2: Encrypt with a device-bound key kept on the client
         // Store the path (not a public URL) so signed URLs can be generated at display time
         let image_url: string | null = null;
         let gradcam_image_url: string | null = null;

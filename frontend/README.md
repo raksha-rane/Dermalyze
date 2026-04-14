@@ -101,6 +101,7 @@ BACKEND_URL=http://localhost:9000 npm run dev
 - The classify call refreshes tokens if expiry is within 60 seconds.
 - Supabase auth state is stored in `window.sessionStorage` (session ends on browser/tab close).
 - Idle session guard: warning around 28 minutes inactivity, sign-out around 30 minutes inactivity on protected routes.
+- Analysis images are encrypted client-side before upload. The encryption key is stored locally on the client device, so encrypted images can only be decrypted on devices that hold the same key.
 
 ## Backend Contract
 
@@ -136,7 +137,6 @@ Use `frontend/supabase_setup.sql` to provision:
 
 - Inference API: [`../inference_service/README.md`](../inference_service/README.md)
 - Training pipeline: [`../skin_lesion_classifier/README.md`](../skin_lesion_classifier/README.md)
-
 
 
 
