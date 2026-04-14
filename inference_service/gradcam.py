@@ -157,18 +157,51 @@ def get_target_layer(model: nn.Module) -> nn.Module:
     Returns:
         The target convolutional layer for Grad-CAM
     """
-    # Check model type by looking at backbone structure
-    backbone = getattr(model, 'backbone', None)
-    if backbone is None:
-        raise ValueError("Model must have a 'backbone' attribute")
+    def _unwrap_gradcam_base_model(candidate: nn.Module) -> nn.Module:
+        """Unwrap common wrapper modules until a feature extractor is reached."""
+        seen = set()
+        current = candidate
 
-    # Both EfficientNet and ConvNeXt use features[-1] as last conv block
-    features = getattr(backbone, 'features', None)
-    if features is None:
-        raise ValueError("Model backbone must have a 'features' attribute")
+        while id(current) not in seen:
+            seen.add(id(current))
 
-    # Return the last feature block
-    return features[-1]
+            module = getattr(current, "module", None)
+            if isinstance(module, nn.Module):
+                current = module
+                continue
+
+            image_model = getattr(current, "image_model", None)
+            if isinstance(image_model, nn.Module):
+                current = image_model
+                continue
+
+            break
+
+        return current
+
+    base_model = _unwrap_gradcam_base_model(model)
+
+    # Common case for inference wrappers: wrapper.backbone.features[-1]
+    backbone = getattr(base_model, "backbone", None)
+    if isinstance(backbone, nn.Module):
+        features = getattr(backbone, "features", None)
+        if isinstance(features, nn.Sequential) and len(features) > 0:
+            return features[-1]
+
+    # Fallback for torchvision-style models exposing features directly
+    features = getattr(base_model, "features", None)
+    if isinstance(features, nn.Sequential) and len(features) > 0:
+        return features[-1]
+
+    # Last-resort fallback: use the deepest Conv2d to avoid hard failure.
+    conv_layers = [module for module in base_model.modules() if isinstance(module, nn.Conv2d)]
+    if conv_layers:
+        return conv_layers[-1]
+
+    raise ValueError(
+        "Unable to resolve Grad-CAM target layer. "
+        "Expected a model with backbone/features or at least one Conv2d layer."
+    )
 
 
 def apply_colormap(heatmap: np.ndarray, colormap: str = "jet") -> np.ndarray:
