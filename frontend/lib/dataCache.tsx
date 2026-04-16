@@ -134,7 +134,7 @@ export const DataCacheProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                 const response = await fetch(signed.signedUrl);
                 if (response.ok) {
                   const encryptedBlob = await response.blob();
-                  const decryptedBlob = await decryptImage(encryptedBlob, user.id, 'image/webp');
+                  const decryptedBlob = await decryptImage(encryptedBlob, user.id);
                   resolvedImageUrl = await blobToDataUrl(decryptedBlob);
                 } else {
                   resolvedImageUrl = null;
@@ -249,7 +249,7 @@ export const DataCacheProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                     const response = await fetch(signedUrl);
                     if (!response.ok) return;
                     const encryptedBlob = await response.blob();
-                    const decryptedBlob = await decryptImage(encryptedBlob, userId, 'image/webp');
+                    const decryptedBlob = await decryptImage(encryptedBlob, userId);
                     const dataUrl = await blobToDataUrl(decryptedBlob);
                     imageUrlMap[path] = dataUrl;
                   } else {

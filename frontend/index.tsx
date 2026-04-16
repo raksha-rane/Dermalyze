@@ -22,6 +22,7 @@ root.render(
     <BrowserRouter>
       <DataCacheProvider>
         <App />
+        <Analytics />
       </DataCacheProvider>
     </BrowserRouter>
     <Analytics />
