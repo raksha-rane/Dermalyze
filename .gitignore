@@ -96,6 +96,7 @@ skin_lesion_classifier/data/braaff-bald/
 skin_lesion_classifier/evaluation_results/
 skInference service models
 inference_service/model/
+inference_service/benchmark_results/
 
 # in_lesion_classifier/outputs/
 
