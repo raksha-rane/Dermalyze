@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import { supabase } from './lib/supabase';
 import type { ClassResult, AnalysisHistoryItem, InferenceMetadata } from './lib/types';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -492,6 +493,7 @@ const App: React.FC = () => {
             </Suspense>
           </div>
         )}
+        <SpeedInsights />
       </div>
     </ErrorBoundary>
   );
