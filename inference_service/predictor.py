@@ -26,7 +26,7 @@ try:
     from .models.efficientnet import SkinLesionClassifier, normalize_efficientnet_variant
     from .models.multi_input import MultiInputClassifier
     from .tta_constants import TTA_AUG_COUNTS
-    from .gradcam import GradCAM, get_target_layer, heatmap_to_base64
+    from .gradcam import GradCAM, GradCAMPlusPlus, get_target_layer, heatmap_to_base64
 except ImportError:
     from metadata import (
         CLASS_LABELS,
@@ -40,7 +40,7 @@ except ImportError:
     from models.efficientnet import SkinLesionClassifier, normalize_efficientnet_variant
     from models.multi_input import MultiInputClassifier
     from tta_constants import TTA_AUG_COUNTS
-    from gradcam import GradCAM, get_target_layer, heatmap_to_base64
+    from gradcam import GradCAM, GradCAMPlusPlus, get_target_layer, heatmap_to_base64
 
 try:
     import cv2
@@ -318,6 +318,7 @@ class SkinLesionPredictor:
         target_class: Optional[int] = None,
         alpha: float = 0.4,
         colormap: str = "jet",
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> str:
         """Generate Grad-CAM heatmap overlay as base64 string.
 
@@ -326,6 +327,9 @@ class SkinLesionPredictor:
             target_class: Class index to generate CAM for (None = predicted class)
             alpha: Heatmap overlay opacity (0-1)
             colormap: Colormap to use ('jet', 'turbo', 'grayscale')
+            metadata: Optional metadata dict (same as passed to predict()).
+                      Must be provided when the model was trained with metadata
+                      fusion so the Grad-CAM forward pass matches the prediction.
 
         Returns:
             Base64-encoded PNG image of heatmap overlay
@@ -335,14 +339,20 @@ class SkinLesionPredictor:
 
         # Preprocess for model
         tensor = self.preprocess(image)
+        metadata_tensor = self._prepare_metadata_tensor(metadata)
 
         # Get target layer and create GradCAM
         target_layer = get_target_layer(self.model)
-        gradcam = GradCAM(self.model, target_layer)
+        gradcam = GradCAMPlusPlus(self.model, target_layer)
 
         try:
-            # Generate heatmap
-            heatmap = gradcam.generate(tensor, target_class)
+            tensor.requires_grad_(True)
+            # Use _forward_model so metadata is correctly passed to
+            # MultiInputClassifier — previously self.model(tensor) was called
+            # directly which silently used zero-padded metadata, causing the
+            # Grad-CAM forward pass to differ from the actual prediction.
+            output = self._forward_model(tensor, metadata_tensor)
+            heatmap = gradcam.generate_from_output(output, target_class)
 
             # Create overlay and encode as base64
             gradcam_base64 = heatmap_to_base64(
@@ -386,7 +396,7 @@ class SkinLesionPredictor:
         # For gradcam we need gradients, so use a separate path
         if include_gradcam:
             target_layer = get_target_layer(self.model)
-            gradcam = GradCAM(self.model, target_layer)
+            gradcam = GradCAMPlusPlus(self.model, target_layer)
             try:
                 # Forward pass with gradients enabled
                 tensor.requires_grad_(True)
