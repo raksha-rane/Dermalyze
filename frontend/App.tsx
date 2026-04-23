@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, lazy, Suspense } from 
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { SpeedInsights } from '@vercel/speed-insights/react';
 import { supabase } from './lib/supabase';
-import type { ClassResult, AnalysisHistoryItem, InferenceMetadata } from './lib/types';
+import type { ClassResult, AnalysisHistoryItem, InferenceMetadata, TrustResult } from './lib/types';
 import ErrorBoundary from './components/ErrorBoundary';
 import AppLayout from './components/AppLayout';
 
@@ -107,6 +107,7 @@ const App: React.FC = () => {
   );
   const [analysisResults, setAnalysisResults] = useState<ClassResult[] | null>(null);
   const [analysisGradcam, setAnalysisGradcam] = useState<string | null>(null);
+  const [analysisTrustResult, setAnalysisTrustResult] = useState<TrustResult | null>(null);
   const [analysisCaseId, setAnalysisCaseId] = useState<string | null>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [analysisRetryable, setAnalysisRetryable] = useState(false);
@@ -223,6 +224,7 @@ const App: React.FC = () => {
     setInferenceMetadata(createEmptyInferenceMetadata());
     setAnalysisResults(null);
     setAnalysisGradcam(null);
+    setAnalysisTrustResult(null);
     setAnalysisCaseId(null);
     setAnalysisError(null);
     setAnalysisRetryable(false);
@@ -364,11 +366,12 @@ const App: React.FC = () => {
                     <ProcessingScreen
                       image={selectedImage}
                       metadata={inferenceMetadata}
-                      onComplete={(results, gradcamImage) => {
+                      onComplete={(results, gradcamImage, trustResult) => {
                         const caseId = crypto.randomUUID();
                         setAnalysisCaseId(caseId);
                         setAnalysisResults(results);
                         setAnalysisGradcam(gradcamImage ?? null);
+                        setAnalysisTrustResult(trustResult);
                         navigate(ROUTES.results);
                       }}
                       onError={(msg, retryable) => {
@@ -392,6 +395,7 @@ const App: React.FC = () => {
                       image={selectedImage}
                       results={analysisResults}
                       gradcamImage={analysisGradcam}
+                      trustResult={analysisTrustResult!}
                       caseId={analysisCaseId}
                       metadata={inferenceMetadata}
                       onAnalyzeAnother={resetAnalysis}

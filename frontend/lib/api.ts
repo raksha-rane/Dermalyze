@@ -1,4 +1,4 @@
-import type { ClassResult, InferenceMetadata } from './types';
+import type { ClassResult, InferenceMetadata, TrustUncertainty, TrustResult } from './types';
 import { supabase } from './supabase';
 
 export class ApiError extends Error {
@@ -13,11 +13,17 @@ export class ApiError extends Error {
 interface ClassifyResponse {
   classes: ClassResult[];
   gradcam_image?: string | null; // Base64-encoded PNG heatmap overlay
+  prediction: string;
+  calibrated_confidence: number;
+  uncertainty: TrustUncertainty;
+  quality_flags: string[];
+  recommendation: 'classify' | 'review_required' | 'reject';
 }
 
 export interface ClassifyResult {
   classes: ClassResult[];
   gradcamImage?: string; // Base64 data URL for display
+  trustResult: TrustResult;
 }
 
 const getApiBaseUrl = (): string => {
@@ -38,6 +44,10 @@ const assertValidResponse = (payload: unknown): ClassifyResponse => {
   const maybeClasses = (payload as { classes: unknown }).classes;
   if (!Array.isArray(maybeClasses)) {
     throw new Error('Invalid API response: classes must be an array.');
+  }
+
+  if (!('recommendation' in payload)) {
+    throw new Error('Invalid API response: missing recommendation field from Trust Layer.');
   }
 
   return payload as ClassifyResponse;
@@ -112,5 +122,12 @@ export const classifyImage = async (
   return {
     classes: sortedClasses,
     gradcamImage,
+    trustResult: {
+      prediction: parsed.prediction,
+      calibrated_confidence: parsed.calibrated_confidence,
+      uncertainty: parsed.uncertainty,
+      quality_flags: parsed.quality_flags,
+      recommendation: parsed.recommendation,
+    },
   };
 };

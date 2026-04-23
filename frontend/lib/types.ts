@@ -10,6 +10,21 @@ export interface InferenceMetadata {
   anatomSite: string | null;
 }
 
+export interface TrustUncertainty {
+  score: number;
+  normalized_entropy: number;
+  top2_margin: number;
+  variation_ratio: number;
+}
+
+export interface TrustResult {
+  prediction: string;
+  calibrated_confidence: number;
+  uncertainty: TrustUncertainty;
+  quality_flags: string[];
+  recommendation: 'classify' | 'review_required' | 'reject';
+}
+
 export interface AnalysisHistoryItem {
   id: string;
   createdAt: string; // ISO timestamp for calculations

@@ -1,11 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { classifyImage, ApiError } from '../lib/api';
-import type { ClassResult, InferenceMetadata } from '../lib/types';
+import type { ClassResult, InferenceMetadata, TrustResult } from '../lib/types';
 
 interface ProcessingScreenProps {
   image: string | null;
   metadata: InferenceMetadata;
-  onComplete: (results: ClassResult[], gradcamImage?: string) => void;
+  onComplete: (results: ClassResult[], gradcamImage: string | undefined, trustResult: TrustResult) => void;
   onError: (message?: string, retryable?: boolean) => void;
 }
 
@@ -38,7 +38,7 @@ const ProcessingScreen: React.FC<ProcessingScreenProps> = ({
         setStatusText('Finalising results…');
         await new Promise((r) => setTimeout(r, 300));
 
-        onComplete(result.classes, result.gradcamImage);
+        onComplete(result.classes, result.gradcamImage, result.trustResult);
       } catch (err: unknown) {
         const msg =
           err instanceof Error

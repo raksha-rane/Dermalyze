@@ -9,12 +9,13 @@ import { optimizeImage } from '../lib/imageOptimization';
 import { encryptImage, getEncryptedExtension } from '../lib/imageEncryption';
 import { useDataCache } from '../lib/dataCache';
 import { generateDermatologyReport } from '../lib/pdfReportGenerator';
-import type { ClassResult, InferenceMetadata } from '../lib/types';
+import type { ClassResult, InferenceMetadata, TrustResult } from '../lib/types';
 
 interface ResultsScreenProps {
   image: string | null;
   results: ClassResult[] | null;
   gradcamImage?: string | null;
+  trustResult: TrustResult;
   caseId: string;
   metadata?: InferenceMetadata | null;
   onAnalyzeAnother: () => void;
@@ -64,6 +65,7 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({
   image,
   results,
   gradcamImage,
+  trustResult,
   caseId,
   metadata,
   onAnalyzeAnother,
@@ -199,11 +201,13 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({
           age_approx: metadata?.ageApprox ?? null,
           sex: metadata?.sex ?? null,
           anatom_site: metadata?.anatomSite ?? null,
+          trust: trustResult,
         };
         const hasAnyMetadata =
           metadataPayload.age_approx !== null ||
           metadataPayload.sex !== null ||
-          metadataPayload.anatom_site !== null;
+          metadataPayload.anatom_site !== null ||
+          metadataPayload.trust !== null;
 
         const { error: insertErr } = await supabase.from('analyses').insert({
           id: caseId,
@@ -379,21 +383,55 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({
           );
         })()}
 
-        {/* PRIMARY RESULT CARD — includes analyzed image */}
-        <ResultCard
-          classId={predictedClass.id}
-          className={predictedClass.name}
-          confidence={predictedClass.score}
-          info={info}
-          imageUrl={image}
-          gradcamImage={gradcamImage}
-        />
+        {/* TRUST LAYER UI ENFORCEMENT */}
+        {trustResult.recommendation === 'reject' ? (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-6 shadow-sm">
+            <h2 className="text-red-800 text-lg font-bold mb-2 flex items-center gap-2">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              Analysis Rejected: Extreme Uncertainty
+            </h2>
+            <p className="text-red-700 text-sm mb-4">
+              The model is highly uncertain about this image and could not produce a reliable classification. This typically occurs if the image is out-of-distribution (not a skin lesion), very poor quality, or an extremely rare presentation. Specific predictions have been hidden to prevent clinical anchoring on an unreliable output.
+            </p>
+            <p className="text-red-700 text-sm font-semibold">
+              Action Required: Please capture a higher quality image or proceed with manual clinical evaluation.
+            </p>
+          </div>
+        ) : (
+          <>
+            {trustResult.recommendation === 'review_required' && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 shadow-sm flex gap-3">
+                <svg className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <div>
+                  <h3 className="text-amber-800 font-bold text-sm">Review Required: High Uncertainty</h3>
+                  <p className="text-amber-700 text-xs mt-1">
+                    The model is uncertain about this prediction. It may be a borderline case or visually ambiguous. Please rely strictly on clinical judgment and consider the full probability distribution.
+                  </p>
+                </div>
+              </div>
+            )}
 
-        {/* PROBABILITY CHART — full width */}
-        <ProbabilityChart classes={classes} predictedClassId={predictedClass.id} />
+            {/* PRIMARY RESULT CARD — includes analyzed image */}
+            <ResultCard
+              classId={predictedClass.id}
+              className={predictedClass.name}
+              confidence={predictedClass.score}
+              info={info}
+              imageUrl={image}
+              gradcamImage={gradcamImage}
+            />
 
-        {/* MEDICAL INFO — Full-width row below the bento pair */}
-        <MedicalInfoCard info={info} />
+            {/* PROBABILITY CHART — full width */}
+            <ProbabilityChart classes={classes} predictedClassId={predictedClass.id} />
+
+            {/* MEDICAL INFO — Full-width row below the bento pair */}
+            <MedicalInfoCard info={info} />
+          </>
+        )}
 
         {/* CLINICIAN NOTES */}
         {!saveFailed && (
