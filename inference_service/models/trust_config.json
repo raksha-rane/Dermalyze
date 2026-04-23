@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "method": "temperature_scaling_plus_conformal",
+  "temperature": 0.8,
+  "conformal": {
+    "confidence_threshold": 0.2697838921640716,
+    "score_threshold": 0.7302161078359284,
+    "target_coverage": 0.9,
+    "empirical_coverage": 0.900691699604743,
+    "quantile_level": 0.900691699604743
+  },
+  "thresholds": {
+    "classify_confidence": 0.65,
+    "reject_confidence": 0.5,
+    "review_entropy": 0.55,
+    "reject_entropy": 0.75,
+    "review_margin": 0.15
+  }
+}

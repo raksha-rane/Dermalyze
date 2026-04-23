@@ -1135,6 +1135,117 @@ def plot_calibration_curve(
     }
 
 
+def _apply_temperature_to_probabilities(
+    probabilities: np.ndarray,
+    temperature: float,
+) -> np.ndarray:
+    """Apply softmax temperature scaling directly in probability space."""
+    safe_temperature = max(float(temperature), 1e-6)
+    probs = np.clip(np.asarray(probabilities, dtype=np.float64), 1e-12, 1.0)
+    scaled = probs ** (1.0 / safe_temperature)
+    scaled /= scaled.sum(axis=1, keepdims=True)
+    return scaled
+
+
+def _fit_temperature_from_probabilities(
+    y_true: np.ndarray,
+    y_prob: np.ndarray,
+    grid_min: float = 0.50,
+    grid_max: float = 5.00,
+    grid_steps: int = 91,
+) -> float:
+    """Fit temperature by minimizing NLL on a held-out labeled set."""
+    y_true = np.asarray(y_true, dtype=np.int64)
+    y_prob = np.asarray(y_prob, dtype=np.float64)
+
+    candidate_temperatures = np.linspace(grid_min, grid_max, grid_steps)
+    best_temperature = 1.0
+    best_nll = float("inf")
+
+    row_indices = np.arange(len(y_true))
+    for temperature in candidate_temperatures:
+        scaled = _apply_temperature_to_probabilities(y_prob, float(temperature))
+        true_probs = np.clip(scaled[row_indices, y_true], 1e-12, 1.0)
+        nll = float(-np.mean(np.log(true_probs)))
+        if nll < best_nll:
+            best_nll = nll
+            best_temperature = float(temperature)
+
+    return best_temperature
+
+
+def _compute_conformal_confidence_threshold(
+    y_true: np.ndarray,
+    y_prob: np.ndarray,
+    target_coverage: float,
+) -> Dict[str, float]:
+    """Compute conformal confidence threshold for selective classification."""
+    y_true = np.asarray(y_true, dtype=np.int64)
+    y_prob = np.asarray(y_prob, dtype=np.float64)
+    n_samples = len(y_true)
+    if n_samples == 0:
+        raise ValueError("Cannot compute conformal threshold with zero labeled samples.")
+
+    target_coverage = float(np.clip(target_coverage, 0.01, 0.99))
+    row_indices = np.arange(n_samples)
+    true_probs = np.clip(y_prob[row_indices, y_true], 1e-12, 1.0)
+    nonconformity_scores = 1.0 - true_probs
+
+    quantile_level = min(1.0, max(0.0, np.ceil((n_samples + 1) * target_coverage) / n_samples))
+    score_threshold = float(np.quantile(nonconformity_scores, quantile_level))
+    confidence_threshold = float(np.clip(1.0 - score_threshold, 0.0, 1.0))
+
+    empirical_coverage = float(np.mean(true_probs >= confidence_threshold))
+
+    return {
+        "confidence_threshold": confidence_threshold,
+        "score_threshold": score_threshold,
+        "target_coverage": target_coverage,
+        "empirical_coverage": empirical_coverage,
+        "quantile_level": float(quantile_level),
+    }
+
+
+def _build_trust_config_from_eval(
+    y_true: np.ndarray,
+    y_prob: np.ndarray,
+    target_coverage: float = 0.90,
+    min_classify_confidence: float = 0.65,
+    review_entropy: float = 0.55,
+    reject_entropy: float = 0.75,
+    review_margin: float = 0.15,
+) -> Dict[str, Any]:
+    """Build trust-layer config using held-out probabilities and labels."""
+    temperature = _fit_temperature_from_probabilities(y_true=y_true, y_prob=y_prob)
+    calibrated_probs = _apply_temperature_to_probabilities(y_prob, temperature)
+
+    conformal = _compute_conformal_confidence_threshold(
+        y_true=y_true,
+        y_prob=calibrated_probs,
+        target_coverage=target_coverage,
+    )
+
+    classify_confidence = max(
+        float(np.clip(min_classify_confidence, 0.0, 1.0)),
+        float(conformal["confidence_threshold"]),
+    )
+    reject_confidence = float(np.clip(classify_confidence - 0.15, 0.0, 1.0))
+
+    return {
+        "version": 1,
+        "method": "temperature_scaling_plus_conformal",
+        "temperature": float(temperature),
+        "conformal": conformal,
+        "thresholds": {
+            "classify_confidence": classify_confidence,
+            "reject_confidence": reject_confidence,
+            "review_entropy": float(np.clip(review_entropy, 0.0, 1.0)),
+            "reject_entropy": float(np.clip(reject_entropy, 0.0, 1.0)),
+            "review_margin": float(np.clip(review_margin, 0.0, 1.0)),
+        },
+    }
+
+
 def plot_per_class_metrics(
     metrics: Dict[str, Any],
     class_names: List[str],
@@ -1224,6 +1335,12 @@ def evaluate(
     segmentation_crop_margin: Optional[float] = None,
     segmentation_required: Optional[bool] = None,
     segmentation_mask_suffixes: Optional[List[str]] = None,
+    trust_config_output: Optional[Path] = None,
+    trust_target_coverage: float = 0.90,
+    trust_min_classify_confidence: float = 0.65,
+    trust_review_entropy: float = 0.55,
+    trust_reject_entropy: float = 0.75,
+    trust_review_margin: float = 0.15,
 ) -> Dict[str, Any]:
     """
     Evaluate a trained model on test data.
@@ -1255,6 +1372,12 @@ def evaluate(
         segmentation_crop_margin: Margin around lesion ROI as a fraction
         segmentation_required: Whether every image must have a mask when ROI crop is enabled
         segmentation_mask_suffixes: Optional list of mask filename suffixes
+        trust_config_output: Optional path to export trust-layer calibration JSON
+        trust_target_coverage: Desired conformal coverage for accepted predictions
+        trust_min_classify_confidence: Floor for classify confidence threshold
+        trust_review_entropy: Entropy threshold above which review is required
+        trust_reject_entropy: Entropy threshold above which prediction is rejected
+        trust_review_margin: Top-2 margin threshold below which review is required
 
     Returns:
         Dictionary of evaluation results
@@ -1582,6 +1705,27 @@ def evaluate(
     )
     metrics["calibration"] = calibration_metrics
 
+    if trust_config_output is not None:
+        trust_config_output.parent.mkdir(parents=True, exist_ok=True)
+        trust_config = _build_trust_config_from_eval(
+            y_true=y_true_labeled,
+            y_prob=y_prob_labeled,
+            target_coverage=trust_target_coverage,
+            min_classify_confidence=trust_min_classify_confidence,
+            review_entropy=trust_review_entropy,
+            reject_entropy=trust_reject_entropy,
+            review_margin=trust_review_margin,
+        )
+        with open(trust_config_output, "w") as f:
+            json.dump(trust_config, f, indent=2)
+        logger.info("Saved trust-layer config to: %s", trust_config_output)
+        metrics["trust_layer"] = {
+            "config_path": str(trust_config_output),
+            "temperature": trust_config["temperature"],
+            "conformal": trust_config["conformal"],
+            "thresholds": trust_config["thresholds"],
+        }
+
     # Generate plots
     logger.info("Generating plots...")
 
@@ -1792,6 +1936,48 @@ def main() -> None:
         default="weighted_mean",
         help="How to aggregate ensemble predictions",
     )
+    parser.add_argument(
+        "--export-trust-config",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Export trust calibration config from held-out evaluation",
+    )
+    parser.add_argument(
+        "--trust-config-output",
+        type=Path,
+        default=None,
+        help="Output path for trust config JSON (default: <output>/trust_config.json)",
+    )
+    parser.add_argument(
+        "--trust-target-coverage",
+        type=float,
+        default=0.90,
+        help="Target conformal coverage for accepted predictions",
+    )
+    parser.add_argument(
+        "--trust-min-classify-confidence",
+        type=float,
+        default=0.65,
+        help="Minimum classify confidence threshold floor",
+    )
+    parser.add_argument(
+        "--trust-review-entropy",
+        type=float,
+        default=0.55,
+        help="Entropy threshold above which review is required",
+    )
+    parser.add_argument(
+        "--trust-reject-entropy",
+        type=float,
+        default=0.75,
+        help="Entropy threshold above which prediction is rejected",
+    )
+    parser.add_argument(
+        "--trust-review-margin",
+        type=float,
+        default=0.15,
+        help="Top-2 margin threshold below which review is required",
+    )
     args = parser.parse_args()
 
     project_root = Path(__file__).resolve().parent.parent
@@ -1808,6 +1994,8 @@ def main() -> None:
     if args.masks_dir is not None:
         args.masks_dir = _resolve_project_path(args.masks_dir)
     args.output = _resolve_project_path(args.output)
+    if args.trust_config_output is not None:
+        args.trust_config_output = _resolve_project_path(args.trust_config_output)
 
     config_defaults: Dict[str, Any] = {}
     if args.config is not None and args.config.exists():
@@ -1902,6 +2090,14 @@ def main() -> None:
     use_ensemble = len(args.checkpoint) > 1
     checkpoint_path = args.checkpoint if use_ensemble else args.checkpoint[0]
 
+    trust_config_output: Optional[Path] = None
+    if args.export_trust_config:
+        trust_config_output = (
+            args.trust_config_output
+            if args.trust_config_output is not None
+            else (args.output / "trust_config.json")
+        )
+
     evaluate(
         checkpoint_path=checkpoint_path,
         test_csv=args.test_csv,
@@ -1924,6 +2120,12 @@ def main() -> None:
         segmentation_crop_margin=segmentation_crop_margin,
         segmentation_required=segmentation_required,
         segmentation_mask_suffixes=segmentation_mask_suffixes,
+        trust_config_output=trust_config_output,
+        trust_target_coverage=args.trust_target_coverage,
+        trust_min_classify_confidence=args.trust_min_classify_confidence,
+        trust_review_entropy=args.trust_review_entropy,
+        trust_reject_entropy=args.trust_reject_entropy,
+        trust_review_margin=args.trust_review_margin,
     )
 
 

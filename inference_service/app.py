@@ -7,7 +7,7 @@ import importlib
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -30,8 +30,10 @@ if _dotenv_spec is not None:
 
 try:
     from .predictor import SkinLesionPredictor
+    from .trust_layer import ModelTrustLayer
 except ImportError:
     from predictor import SkinLesionPredictor
+    from trust_layer import ModelTrustLayer
 
 CLASS_IDS: List[str] = ["akiec", "bcc", "bkl", "df", "mel", "nv", "vasc"]
 CLASS_NAMES: Dict[str, str] = {
@@ -47,6 +49,8 @@ CLASS_NAMES: Dict[str, str] = {
 _SERVICE_DIR = Path(__file__).resolve().parent
 _DEFAULT_CHECKPOINT = _SERVICE_DIR / "models" / "checkpoint_best.pt"
 _LEGACY_DEFAULT_CHECKPOINT = _SERVICE_DIR / "model" / "checkpoint_best.pt"
+_DEFAULT_TRUST_CONFIG = _SERVICE_DIR / "models" / "trust_config.json"
+_LEGACY_DEFAULT_TRUST_CONFIG = _SERVICE_DIR / "model" / "trust_config.json"
 _DEFAULT_SWIN_MODEL_ID = "gianlab/swin-tiny-patch4-window7-224-finetuned-skin-cancer"
 _DEFAULT_SWIN_MODEL_DIR = _SERVICE_DIR / "swin"
 
@@ -79,7 +83,19 @@ def _resolve_checkpoint_path() -> Path:
     return _LEGACY_DEFAULT_CHECKPOINT
 
 
+def _resolve_trust_config_path() -> Optional[Path]:
+    explicit = os.environ.get("TRUST_CONFIG_PATH")
+    if explicit:
+        return Path(explicit)
+    if _DEFAULT_TRUST_CONFIG.exists():
+        return _DEFAULT_TRUST_CONFIG
+    if _LEGACY_DEFAULT_TRUST_CONFIG.exists():
+        return _LEGACY_DEFAULT_TRUST_CONFIG
+    return None
+
+
 CHECKPOINT_PATH = _resolve_checkpoint_path()
+TRUST_CONFIG_PATH = _resolve_trust_config_path()
 IMAGE_SIZE = int(os.environ.get("MODEL_IMAGE_SIZE", "300"))
 USE_TTA = os.environ.get("USE_TTA", "false").lower() == "true"
 TTA_MODE = os.environ.get("TTA_MODE", "medium")
@@ -106,6 +122,7 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL", "").strip()
 SUPABASE_JWT_SECRET = os.environ.get("SUPABASE_JWT_SECRET", "").strip()
 
 print(f"[config] MODEL_BACKEND: {MODEL_BACKEND}")
+print(f"[config] TRUST_CONFIG_PATH: {TRUST_CONFIG_PATH or 'NOT SET (using defaults)'}")
 if MODEL_BACKEND == "swin":
     print(f"[config] SWIN_MODEL_SOURCE: {SWIN_MODEL_SOURCE}")
     swin_weights_label = SWIN_WEIGHTS_PATH if SWIN_WEIGHTS_PATH else "from model source"
@@ -310,9 +327,15 @@ class ClassResult(BaseModel):
 class ClassifyResponse(BaseModel):
     classes: List[ClassResult]
     gradcam_image: Optional[str] = None  # Base64-encoded PNG heatmap overlay
+    prediction: str
+    calibrated_confidence: float
+    uncertainty: Dict[str, float]
+    quality_flags: List[str]
+    recommendation: Literal["classify", "review_required", "reject"]
 
 
 _predictor: Any | None = None
+_trust_layer: ModelTrustLayer | None = None
 
 
 def _get_predictor() -> Any:
@@ -346,6 +369,13 @@ def _get_predictor() -> Any:
             image_size=IMAGE_SIZE,
         )
     return _predictor
+
+
+def _get_trust_layer() -> ModelTrustLayer:
+    global _trust_layer
+    if _trust_layer is None:
+        _trust_layer = ModelTrustLayer.from_json_path(TRUST_CONFIG_PATH)
+    return _trust_layer
 
 
 def _to_frontend_response(probabilities: Dict[str, float]) -> List[ClassResult]:
@@ -547,9 +577,16 @@ async def classify_image(
         if not isinstance(probs, dict):
             raise RuntimeError("Inference output did not include class probabilities.")
 
+        trust_result = _get_trust_layer().assess(probs)
+
         return ClassifyResponse(
             classes=_to_frontend_response(probs),
             gradcam_image=gradcam_image,
+            prediction=str(trust_result["prediction"]),
+            calibrated_confidence=float(trust_result["calibrated_confidence"]),
+            uncertainty=trust_result["uncertainty"],
+            quality_flags=list(trust_result["quality_flags"]),
+            recommendation=str(trust_result["recommendation"]),
         )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
