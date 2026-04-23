@@ -12,12 +12,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code (model file is gitignored — downloaded below instead)
 COPY . .
 
-# Download model checkpoint from HF Hub model repo (cached Docker layer)
+# Download model checkpoint and trust config from HF Hub model repo (cached Docker layer)
 RUN mkdir -p /app/models && \
     wget -q -O /app/models/checkpoint_best.pt \
-    https://huggingface.co/asmit404/dermalyze-model/resolve/main/checkpoint_best.pt
+    https://huggingface.co/asmit404/dermalyze-model/resolve/main/checkpoint_best.pt && \
+    wget -q -O /app/models/trust_config.json \
+    https://huggingface.co/asmit404/dermalyze-model/resolve/main/trust_config.json
 
 ENV MODEL_CHECKPOINT=/app/models/checkpoint_best.pt
+ENV TRUST_CONFIG_PATH=/app/models/trust_config.json
 ENV USE_TTA=false
 ENV CORS_ORIGINS=https://www.dermalyze.tech
 
