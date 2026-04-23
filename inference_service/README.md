@@ -14,6 +14,12 @@ Standalone FastAPI inference API for Dermalyze. This service is intentionally de
 
 Metadata-fusion checkpoints are supported. If a checkpoint contains `metadata_encoder_state`, the predictor automatically instantiates the multi-input fusion model.
 
+## Live Deployment
+
+- **Hugging Face Space**: [asmit404/dermalyze](https://huggingface.co/spaces/asmit404/dermalyze)
+- **Deployed API URL**: `https://asmit404-dermalyze.hf.space/`
+- **Latest Model Weights**: [asmit404/dermalyze-model](https://huggingface.co/asmit404/dermalyze-model)
+
 ## Quick Start
 
 ```bash
@@ -99,6 +105,8 @@ Response:
 
 - Magic-byte validation enforces declared MIME type matches file bytes.
 - Optional Gemini validation rejects non-dermatoscopic images when `GEMINI_API_KEY` is set.
+- Image quality analysis automatically flags blur and exposure issues.
+- Trust Layer evaluates model uncertainty and routes decisions, recommending abstention on unsafe predictions.
 - Rate limit on `/classify`: `20/minute` per client key.
 - Rate-limit key can use `X-Forwarded-For` when request comes from a trusted proxy.
 
@@ -155,6 +163,7 @@ Built-in CORS defaults always include:
 
 - installs dependencies
 - downloads checkpoint to `/app/models/checkpoint_best.pt`
+- downloads and configures the model trust config to `/app/models/trust_config.json`
 - sets `MODEL_CHECKPOINT=/app/models/checkpoint_best.pt`
 - starts Uvicorn on port `7860`
 

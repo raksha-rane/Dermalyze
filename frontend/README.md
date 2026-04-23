@@ -10,7 +10,8 @@ The frontend provides:
 
 - Supabase authentication flows (login, signup, password reset, email verification)
 - Image upload and classification orchestration against the inference API
-- Results visualization across 7 lesion classes
+- Results visualization across 7 lesion classes, including model uncertainty scores and calibrated confidence
+- Trust Layer integration: surfacing image quality flags (blur, exposure) and safe abstention routing
 - User-specific analysis history and trends dashboards
 
 Class IDs used throughout the UI and backend:
@@ -30,6 +31,14 @@ Class IDs used throughout the UI and backend:
 - Vite 6
 - Tailwind CSS
 - Supabase JS SDK
+
+## Live Deployment
+
+The backend inference API is deployed and accessible at:
+- **API URL**: `https://asmit404-dermalyze.hf.space/`
+- **Hugging Face Space**: [asmit404/dermalyze](https://huggingface.co/spaces/asmit404/dermalyze)
+
+You can configure the frontend to use this deployed API by setting `VITE_API_URL=https://asmit404-dermalyze.hf.space` in your `.env.local` file.
 
 ## Prerequisites
 
@@ -101,6 +110,7 @@ BACKEND_URL=http://localhost:9000 npm run dev
 - The classify call refreshes tokens if expiry is within 60 seconds.
 - Supabase auth state is stored in `window.sessionStorage` (session ends on browser/tab close).
 - Idle session guard: warning around 28 minutes inactivity, sign-out around 30 minutes inactivity on protected routes.
+- Result exports and certain UI features may be restricted based on image quality flags (e.g., blur, exposure) and model uncertainty.
 - Analysis images are encrypted client-side before upload. The encryption key is stored locally on the client device, so encrypted images can only be decrypted on devices that hold the same key.
 
 ## Backend Contract

@@ -10,6 +10,12 @@ Dermalyze is a full-stack machine learning application that classifies dermoscop
 
 **Classes**: akiec (Actinic keratoses), bcc (Basal cell carcinoma), bkl (Benign keratosis), df (Dermatofibroma), mel (Melanoma), nv (Melanocytic nevi), vasc (Vascular lesions)
 
+## Live Deployment
+
+- **Inference API Space**: [asmit404/dermalyze](https://huggingface.co/spaces/asmit404/dermalyze)
+- **Deployed API URL**: `https://asmit404-dermalyze.hf.space/`
+- **Latest Model Weights**: [asmit404/dermalyze-model](https://huggingface.co/asmit404/dermalyze-model)
+
 ## Architecture
 
 ```
@@ -186,7 +192,8 @@ For complete configuration examples and advanced tuning, see [IMAGE_SIZE_GUIDE.m
 - **Analysis history** tracking
 - **Responsive web interface**
 - **Grad-CAM visualizations** for model interpretability
-- **Trust Layer** for calibrated confidence and uncertainty assessment (safe abstention)
+- **Trust Layer** for calibrated confidence, uncertainty assessment (safe abstention), and automatic image quality analysis (blur/exposure)
+- **Clinical Safety UX** with conditional result UI rendering and export restrictions based on uncertainty and quality flags
 
 ## Documentation
 
