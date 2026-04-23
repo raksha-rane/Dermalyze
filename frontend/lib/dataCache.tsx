@@ -71,6 +71,29 @@ export const DataCacheProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
     };
     initUser();
+
+    // Invalidate caches on auth state changes (login/logout) to prevent
+    // serving stale data from a previous session.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_IN' || event === 'SIGNED_OUT') {
+        setDashboardStats({ data: null, timestamp: null, loading: false, error: false });
+        setHistoryCache({ data: null, timestamp: null, loading: false, error: false });
+      }
+      if (event === 'SIGNED_IN') {
+        supabase.auth.getUser().then(({ data: { user } }) => {
+          if (user) {
+            setUserId(user.id);
+            setUserName(user.user_metadata?.full_name?.split(' ')[0] ?? '');
+          }
+        });
+      }
+      if (event === 'SIGNED_OUT') {
+        setUserId(null);
+        setUserName(null);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   // Check if cache is stale
@@ -232,6 +255,7 @@ export const DataCacheProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         const allPaths = [...imagePaths, ...gradcamPaths];
 
         let imageUrlMap: Record<string, string> = {};
+        const failedPaths = new Set<string>();
         if (allPaths.length > 0) {
           const { data: signed } = await supabase.storage
             .from('analysis-images')
@@ -257,6 +281,7 @@ export const DataCacheProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                   }
                 } catch (err) {
                   console.error(`Failed to process image ${path}:`, err);
+                  failedPaths.add(path);
                 }
               })
             );
@@ -296,6 +321,10 @@ export const DataCacheProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               rawGradcamUrl && !rawGradcamUrl.startsWith('http') ? rawGradcamUrl : undefined,
             allScores: (row.all_scores as AnalysisHistoryItem['allScores']) ?? undefined,
             notes: (row.notes as string | null) ?? undefined,
+            imageDecryptFailed:
+              (rawUrl && !rawUrl.startsWith('http') && failedPaths.has(rawUrl)) ||
+              (rawGradcamUrl && !rawGradcamUrl.startsWith('http') && failedPaths.has(rawGradcamUrl)) ||
+              false,
           };
         });
 

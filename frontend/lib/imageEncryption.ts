@@ -2,37 +2,30 @@
  * Client-side image encryption for privacy.
  *
  * Security model:
- * - v2 (current): uses a random 256-bit key generated on the client and stored
- *   locally per user/device. The server never receives this key.
- * - v1 (legacy): deterministic key derived from userId. Kept only for backward
- *   compatibility to decrypt already-stored historical files.
+ * - Deterministic AES-256-GCM key derived from the user's Supabase UUID via
+ *   PBKDF2 (100 000 iterations, SHA-256). Because the key is derived from a
+ *   value the user always has post-authentication, it works across every
+ *   device, browser, and session — no local key storage required.
+ * - Images in Supabase Storage are additionally protected by RLS + signed
+ *   URLs, so an attacker would need both authenticated access AND the userId
+ *   to reach and decrypt the ciphertext.
  *
- * Note: because v2 keys are device-bound, encrypted images are readable only on
- * devices that hold the local key.
+ * Wire format: [12-byte IV][AES-GCM ciphertext + 16-byte auth tag]
+ *
+ * Legacy note:
+ * - v2 files (magic header "DLZ2") used a random device-bound key stored in
+ *   localStorage. Decryption for those is still attempted if the local key
+ *   exists, but new uploads always use the deterministic derivation so key
+ *   loss is impossible.
  */
 
-const AES_KEY_BYTES = 32; // 256-bit key
 const AES_GCM_IV_BYTES = 12; // standard IV size for AES-GCM
 const ENCRYPTION_MAGIC_V2 = new Uint8Array([0x44, 0x4c, 0x5a, 0x32]); // "DLZ2"
+
+// ── v2 legacy helpers (read-only — never create new v2 keys) ────────────────
+
+const AES_KEY_BYTES = 32;
 const KEY_STORAGE_PREFIX_V2 = 'dermalyze:image-key:v2:';
-
-function assertValidUserId(userId: string): void {
-  if (!userId || !userId.trim()) {
-    throw new Error('Missing user context for image encryption.');
-  }
-}
-
-function getUserKeyStorageKey(userId: string): string {
-  return `${KEY_STORAGE_PREFIX_V2}${userId}`;
-}
-
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = '';
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-}
 
 function base64ToBytes(base64: string): Uint8Array {
   const binary = atob(base64);
@@ -45,7 +38,7 @@ function base64ToBytes(base64: string): Uint8Array {
 
 function readStoredV2Key(userId: string): Uint8Array | null {
   try {
-    const encoded = window.localStorage.getItem(getUserKeyStorageKey(userId));
+    const encoded = window.localStorage.getItem(`${KEY_STORAGE_PREFIX_V2}${userId}`);
     if (!encoded) return null;
     const keyBytes = base64ToBytes(encoded);
     if (keyBytes.byteLength !== AES_KEY_BYTES) return null;
@@ -53,10 +46,6 @@ function readStoredV2Key(userId: string): Uint8Array | null {
   } catch {
     return null;
   }
-}
-
-function storeV2Key(userId: string, keyBytes: Uint8Array): void {
-  window.localStorage.setItem(getUserKeyStorageKey(userId), bytesToBase64(keyBytes));
 }
 
 async function importAesGcmKey(keyBytes: Uint8Array): Promise<CryptoKey> {
@@ -69,29 +58,23 @@ async function importAesGcmKey(keyBytes: Uint8Array): Promise<CryptoKey> {
   );
 }
 
-async function getOrCreateV2Key(userId: string): Promise<CryptoKey> {
-  assertValidUserId(userId);
+// ── Deterministic key derivation (used for all new encryptions) ─────────────
 
-  let keyBytes = readStoredV2Key(userId);
-  if (!keyBytes) {
-    keyBytes = crypto.getRandomValues(new Uint8Array(AES_KEY_BYTES));
-    storeV2Key(userId, keyBytes);
+function assertValidUserId(userId: string): void {
+  if (!userId || !userId.trim()) {
+    throw new Error('Missing user context for image encryption.');
   }
-  return importAesGcmKey(keyBytes);
 }
 
-async function getExistingV2Key(userId: string): Promise<CryptoKey> {
+/**
+ * Derives a deterministic AES-256-GCM key from the authenticated user's ID.
+ *
+ * Because the userId (a Supabase UUID) is always available after login, this
+ * key can be reconstructed on any device/browser without storing anything
+ * locally — eliminating the key-loss problem entirely.
+ */
+async function deriveDeterministicKey(userId: string): Promise<CryptoKey> {
   assertValidUserId(userId);
-  const keyBytes = readStoredV2Key(userId);
-  if (!keyBytes) {
-    throw new Error(
-      'Encrypted image key not found on this device. Historical images cannot be decrypted here.'
-    );
-  }
-  return importAesGcmKey(keyBytes);
-}
-
-async function deriveLegacyV1Key(userId: string): Promise<CryptoKey> {
   const keyMaterial = new TextEncoder().encode(userId);
   const baseKey = await crypto.subtle.importKey('raw', keyMaterial, { name: 'PBKDF2' }, false, [
     'deriveKey',
@@ -111,6 +94,8 @@ async function deriveLegacyV1Key(userId: string): Promise<CryptoKey> {
   );
 }
 
+// ── v2 payload detection ────────────────────────────────────────────────────
+
 function isV2EncryptedPayload(data: Uint8Array): boolean {
   if (data.byteLength < ENCRYPTION_MAGIC_V2.length + AES_GCM_IV_BYTES + 16) {
     return false;
@@ -121,22 +106,20 @@ function isV2EncryptedPayload(data: Uint8Array): boolean {
   return true;
 }
 
+// ── Public API ──────────────────────────────────────────────────────────────
+
 /**
- * Encrypts an image blob using AES-GCM.
+ * Encrypts an image blob using AES-256-GCM with a deterministic key.
  *
- * The encrypted output includes:
- * - 12-byte IV (initialization vector) prepended to the data
- * - Encrypted image data
- * - 16-byte authentication tag (built into AES-GCM)
+ * Output format: [12-byte IV][ciphertext + 16-byte auth tag]
  *
  * @param imageBlob - Original image as Blob (WebP, JPEG, PNG, etc.)
- * @param userId - User's ID for key derivation
- * @returns Encrypted blob (IV + encrypted data + auth tag)
+ * @param userId - User's Supabase UUID for key derivation
+ * @returns Encrypted blob
  */
 export async function encryptImage(imageBlob: Blob, userId: string): Promise<Blob> {
   try {
-    // v2 encryption uses a random, device-bound key (not userId-derived).
-    const key = await getOrCreateV2Key(userId);
+    const key = await deriveDeterministicKey(userId);
 
     // Generate random IV (12 bytes is standard for AES-GCM)
     const iv = crypto.getRandomValues(new Uint8Array(AES_GCM_IV_BYTES));
@@ -145,24 +128,14 @@ export async function encryptImage(imageBlob: Blob, userId: string): Promise<Blo
     const imageData = await imageBlob.arrayBuffer();
 
     // Encrypt the image data
-    const encryptedData = await crypto.subtle.encrypt(
-      {
-        name: 'AES-GCM',
-        iv: iv,
-      },
-      key,
-      imageData
-    );
+    const encryptedData = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, imageData);
 
-    // v2 format: [4-byte magic "DLZ2"][12-byte IV][ciphertext+auth-tag]
-    const combinedData = new Uint8Array(
-      ENCRYPTION_MAGIC_V2.length + iv.length + encryptedData.byteLength
-    );
-    combinedData.set(ENCRYPTION_MAGIC_V2, 0);
-    combinedData.set(iv, ENCRYPTION_MAGIC_V2.length);
-    combinedData.set(new Uint8Array(encryptedData), ENCRYPTION_MAGIC_V2.length + iv.length);
+    // Format: [12-byte IV][ciphertext+auth-tag]  (no v2 magic header)
+    const combined = new Uint8Array(iv.length + encryptedData.byteLength);
+    combined.set(iv, 0);
+    combined.set(new Uint8Array(encryptedData), iv.length);
 
-    return new Blob([combinedData], { type: 'application/octet-stream' });
+    return new Blob([combined], { type: 'application/octet-stream' });
   } catch (err) {
     console.error('Image encryption failed:', err);
     throw new Error('Failed to encrypt image. Please try again.');
@@ -172,9 +145,13 @@ export async function encryptImage(imageBlob: Blob, userId: string): Promise<Blo
 /**
  * Decrypts an encrypted image blob.
  *
- * @param encryptedBlob - Encrypted blob (IV + encrypted data + auth tag)
- * @param userId - User's ID for key derivation
- * @param originalMimeType - Original image MIME type (e.g., 'image/webp')
+ * Handles three cases in order:
+ *  1. v2 payload (DLZ2 header) — tries the device-local key if it still exists.
+ *  2. v1 / deterministic payload — derives key from userId (always works).
+ *
+ * @param encryptedBlob - Encrypted blob
+ * @param userId - User's Supabase UUID for key derivation
+ * @param originalMimeType - MIME type for the decrypted output
  * @returns Decrypted image as Blob
  */
 export async function decryptImage(
@@ -183,44 +160,34 @@ export async function decryptImage(
   originalMimeType: string = 'image/webp'
 ): Promise<Blob> {
   try {
-    // Read encrypted data
     const encryptedData = await encryptedBlob.arrayBuffer();
     const dataView = new Uint8Array(encryptedData);
 
     let decryptedData: ArrayBuffer;
 
     if (isV2EncryptedPayload(dataView)) {
-      // v2 payload: key is device-bound and stored locally.
-      const key = await getExistingV2Key(userId);
+      // v2 payload — attempt with locally-stored key (may not exist).
+      const localKeyBytes = readStoredV2Key(userId);
+      if (!localKeyBytes) {
+        throw new Error(
+          'This image was encrypted with a device-specific key that is no longer available. ' +
+            'It cannot be decrypted on this device.'
+        );
+      }
+      const key = await importAesGcmKey(localKeyBytes);
       const ivStart = ENCRYPTION_MAGIC_V2.length;
       const ivEnd = ivStart + AES_GCM_IV_BYTES;
       const iv = dataView.slice(ivStart, ivEnd);
       const ciphertext = dataView.slice(ivEnd);
-      decryptedData = await crypto.subtle.decrypt(
-        {
-          name: 'AES-GCM',
-          iv,
-        },
-        key,
-        ciphertext
-      );
+      decryptedData = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
     } else {
-      // Legacy v1 payload fallback for historical .enc files:
-      // format was [12-byte IV][ciphertext+auth-tag].
-      const key = await deriveLegacyV1Key(userId);
+      // Deterministic / v1 payload: [12-byte IV][ciphertext+auth-tag]
+      const key = await deriveDeterministicKey(userId);
       const iv = dataView.slice(0, AES_GCM_IV_BYTES);
       const ciphertext = dataView.slice(AES_GCM_IV_BYTES);
-      decryptedData = await crypto.subtle.decrypt(
-        {
-          name: 'AES-GCM',
-          iv,
-        },
-        key,
-        ciphertext
-      );
+      decryptedData = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
     }
 
-    // Return as blob with original MIME type
     return new Blob([decryptedData], { type: originalMimeType });
   } catch (err) {
     console.error('Image decryption failed:', err);

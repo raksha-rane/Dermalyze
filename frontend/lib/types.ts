@@ -25,6 +25,7 @@ export interface AnalysisHistoryItem {
   allScores?: ClassResult[];
   notes?: string;
   metadata?: InferenceMetadata | null; // Patient metadata captured at analysis time
+  imageDecryptFailed?: boolean; // True when the image exists but could not be decrypted
 }
 
 export interface DashStats {

@@ -220,6 +220,7 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ onBack, onViewDetails }) 
     const allPaths = [...imagePaths, ...gradcamPaths];
 
     let imageUrlMap: Record<string, string> = {};
+    const failedPaths = new Set<string>();
     if (allPaths.length > 0) {
       const { data: signed } = await supabase.storage
         .from('analysis-images')
@@ -253,7 +254,7 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ onBack, onViewDetails }) 
               }
             } catch (err) {
               console.error(`Failed to process image ${path}:`, err);
-              // Silently skip - image won't display but won't break the UI
+              failedPaths.add(path);
             }
           })
         );
@@ -292,6 +293,10 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ onBack, onViewDetails }) 
         gradcamPath: rawGradcamUrl && !rawGradcamUrl.startsWith('http') ? rawGradcamUrl : undefined,
         allScores: (row.all_scores as AnalysisHistoryItem['allScores']) ?? undefined,
         notes: (row.notes as string | null) ?? undefined,
+        imageDecryptFailed:
+          (rawUrl && !rawUrl.startsWith('http') && failedPaths.has(rawUrl)) ||
+          (rawGradcamUrl && !rawGradcamUrl.startsWith('http') && failedPaths.has(rawGradcamUrl)) ||
+          false,
         metadata: (() => {
           const m = row.metadata as Record<string, unknown> | null;
           if (!m) return null;
@@ -1029,13 +1034,27 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ onBack, onViewDetails }) 
                         className="w-4 h-4 rounded border-slate-300 accent-teal-600 cursor-pointer shrink-0"
                       />
                     )}
-                    <div className="w-12 h-12 rounded-lg bg-slate-100 flex items-center justify-center text-slate-300 border border-slate-200 overflow-hidden shrink-0">
+                    <div className={`w-12 h-12 rounded-lg flex items-center justify-center border overflow-hidden shrink-0 ${item.imageDecryptFailed ? 'bg-amber-50 border-amber-300' : 'bg-slate-100 border-slate-200 text-slate-300'}`}>
                       {item.imageUrl ? (
                         <img
                           src={item.imageUrl}
                           alt="Lesion thumbnail"
                           className="w-full h-full object-cover"
                         />
+                      ) : item.imageDecryptFailed ? (
+                        <svg
+                          className="w-5 h-5 text-amber-500"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={1.5}
+                            d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                          />
+                        </svg>
                       ) : (
                         <svg
                           className="w-6 h-6"
@@ -1133,13 +1152,27 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ onBack, onViewDetails }) 
                         )}
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 rounded-lg bg-slate-100 flex items-center justify-center text-slate-300 border border-slate-200 overflow-hidden relative">
+                            <div className={`w-12 h-12 rounded-lg flex items-center justify-center border overflow-hidden relative ${item.imageDecryptFailed ? 'bg-amber-50 border-amber-300' : 'bg-slate-100 border-slate-200 text-slate-300'}`}>
                               {item.imageUrl ? (
                                 <img
                                   src={item.imageUrl}
                                   alt="Lesion thumbnail"
                                   className="w-full h-full object-cover"
                                 />
+                              ) : item.imageDecryptFailed ? (
+                                <svg
+                                  className="w-5 h-5 text-amber-500"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={1.5}
+                                    d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                                  />
+                                </svg>
                               ) : (
                                 <svg
                                   className="w-6 h-6"
