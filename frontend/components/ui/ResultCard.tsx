@@ -14,6 +14,7 @@ interface ResultCardProps {
   info: ClassInfo;
   imageUrl?: string | null;
   gradcamImage?: string | null;
+  uncertaintyScore?: number;
 }
 
 /**
@@ -35,6 +36,7 @@ const ResultCard: React.FC<ResultCardProps> = ({
   info,
   imageUrl,
   gradcamImage,
+  uncertaintyScore,
 }) => {
   const severity = getRiskSeverity(info.riskLevel);
   const badge = getRiskBadgeStyles(severity);
@@ -89,6 +91,23 @@ const ResultCard: React.FC<ResultCardProps> = ({
 
               {/* Vertical divider */}
               <div className="hidden sm:block w-px h-8 bg-slate-200" />
+
+              {/* Uncertainty score */}
+              {uncertaintyScore !== undefined && (
+                <>
+                  <div className="flex items-baseline gap-2" title="Model uncertainty score (0-100%)">
+                    <span className="text-4xl font-extrabold tabular-nums text-slate-700">
+                      {(uncertaintyScore * 100).toFixed(1)}
+                      <span className="text-2xl">%</span>
+                    </span>
+                    <span className="text-xs font-medium text-slate-400 uppercase tracking-wide">
+                      Uncertainty
+                    </span>
+                  </div>
+                  {/* Vertical divider */}
+                  <div className="hidden sm:block w-px h-8 bg-slate-200" />
+                </>
+              )}
 
               {/* Risk badge */}
               <span

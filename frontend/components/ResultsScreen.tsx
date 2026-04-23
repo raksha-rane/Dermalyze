@@ -443,6 +443,7 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({
               info={info}
               imageUrl={image}
               gradcamImage={gradcamImage}
+              uncertaintyScore={trustResult.uncertainty.score}
             />
 
             {/* PROBABILITY CHART — full width */}
