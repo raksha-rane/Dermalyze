@@ -383,6 +383,23 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({
           );
         })()}
 
+        {/* IMAGE QUALITY FLAGS */}
+        {trustResult.quality_flags.some((f) => f.startsWith('image_')) && (
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 shadow-sm flex gap-3">
+            <svg className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div>
+              <h3 className="text-blue-800 font-bold text-sm">Image Quality Notice</h3>
+              <ul className="text-blue-700 text-xs mt-1 list-disc list-inside">
+                {trustResult.quality_flags.includes('image_too_blurry') && <li>Image appears blurry.</li>}
+                {trustResult.quality_flags.includes('image_underexposed') && <li>Image appears underexposed (too dark).</li>}
+                {trustResult.quality_flags.includes('image_overexposed') && <li>Image appears overexposed (too bright).</li>}
+              </ul>
+            </div>
+          </div>
+        )}
+
         {/* TRUST LAYER UI ENFORCEMENT */}
         {trustResult.recommendation === 'reject' ? (
           <div className="bg-red-50 border border-red-200 rounded-xl p-6 shadow-sm">
@@ -498,7 +515,8 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({
         <div className="flex flex-col gap-3">
           <button
             onClick={exportPdf}
-            disabled={exportingPdf}
+            disabled={exportingPdf || trustResult.recommendation === 'reject'}
+            title={trustResult.recommendation === 'reject' ? 'PDF report is unavailable for rejected analyses.' : undefined}
             className="w-full py-2.5 px-4 rounded-full font-medium text-sm border-2 border-teal-600 text-teal-700 bg-teal-50 transition-all duration-200 hover:bg-teal-100 hover:border-teal-700 active:bg-teal-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-400 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <span className="flex items-center justify-center gap-2">

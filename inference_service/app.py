@@ -537,7 +537,7 @@ async def classify_image(
         if not isinstance(probs, dict):
             raise RuntimeError("Inference output did not include class probabilities.")
 
-        trust_result = _get_trust_layer().assess(probs)
+        trust_result = _get_trust_layer().assess(probs, image_bytes=image_bytes)
 
         return ClassifyResponse(
             classes=_to_frontend_response(probs),

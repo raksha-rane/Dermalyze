@@ -18,6 +18,9 @@ class TrustThresholds:
     review_entropy: float
     reject_entropy: float
     review_margin: float
+    blur_variance: float = 100.0
+    underexposure_mean: float = 40.0
+    overexposure_mean: float = 215.0
 
 
 @dataclass(frozen=True)
@@ -90,12 +93,15 @@ class ModelTrustLayer:
                 review_entropy=_clamp01(float(thresholds.get("review_entropy", 0.55))),
                 reject_entropy=_clamp01(float(thresholds.get("reject_entropy", 0.75))),
                 review_margin=_clamp01(float(thresholds.get("review_margin", 0.15))),
+                blur_variance=float(thresholds.get("blur_variance", 100.0)),
+                underexposure_mean=float(thresholds.get("underexposure_mean", 40.0)),
+                overexposure_mean=float(thresholds.get("overexposure_mean", 215.0)),
             ),
             source=str(config_path),
         )
         return cls(config=config)
 
-    def assess(self, probabilities: Dict[str, float]) -> Dict[str, Any]:
+    def assess(self, probabilities: Dict[str, float], image_bytes: Optional[bytes] = None) -> Dict[str, Any]:
         labels = list(probabilities.keys())
         probs = np.array([float(probabilities[label]) for label in labels], dtype=np.float64)
 
@@ -115,8 +121,29 @@ class ModelTrustLayer:
         thresholds = self.config.thresholds
         quality_flags: List[str] = []
 
+        if image_bytes is not None:
+            try:
+                import cv2
+                img_array = np.frombuffer(image_bytes, np.uint8)
+                img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+                if img is not None:
+                    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+                    laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
+                    if laplacian_var < thresholds.blur_variance:
+                        quality_flags.append("image_too_blurry")
+                    
+                    mean_intensity = np.mean(gray)
+                    if mean_intensity < thresholds.underexposure_mean:
+                        quality_flags.append("image_underexposed")
+                    elif mean_intensity > thresholds.overexposure_mean:
+                        quality_flags.append("image_overexposed")
+            except Exception:
+                pass
+
         if top_prob < thresholds.classify_confidence:
             quality_flags.append("low_calibrated_confidence")
+        if second_prob >= thresholds.classify_confidence:
+            quality_flags.append("multiple_conformal_classes")
         if top_prob < thresholds.reject_confidence:
             quality_flags.append("very_low_confidence")
         if normalized_entropy > thresholds.review_entropy:
@@ -134,6 +161,7 @@ class ModelTrustLayer:
             recommendation = "reject"
         elif (
             top_prob >= thresholds.classify_confidence
+            and second_prob < thresholds.classify_confidence
             and normalized_entropy <= thresholds.review_entropy
             and margin >= thresholds.review_margin
         ):
