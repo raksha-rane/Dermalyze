@@ -118,7 +118,17 @@ Response shape:
 {
   "classes": [
     { "id": "mel", "name": "Melanoma", "score": 87.42 }
-  ]
+  ],
+  "prediction": "mel",
+  "calibrated_confidence": 0.8742,
+  "uncertainty": {
+    "score": 0.23,
+    "normalized_entropy": 0.35,
+    "top2_margin": 0.7811,
+    "variation_ratio": 0.1258
+  },
+  "quality_flags": [],
+  "recommendation": "classify"
 }
 ```
 

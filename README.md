@@ -41,7 +41,7 @@ python src/train.py --config config.yaml
 ### 2. Export to Inference Service
 
 ```bash
-cp skin_lesion_classifier/outputs/run_xxx/checkpoint_best.pt inference_service/model/
+cp skin_lesion_classifier/outputs/run_xxx/checkpoint_best.pt inference_service/models/
 ```
 
 ### 3. Run Inference API
@@ -124,7 +124,7 @@ python skin_lesion_classifier/src/prepare_data.py \
 
 1. **Prepare Data**: Use `prepare_data.py` to format your dataset and extract metadata
 2. **Train**: Use `skin_lesion_classifier/` to train models on prepared data
-3. **Export**: Copy best checkpoint to `inference_service/model/`
+3. **Export**: Copy best checkpoint to `inference_service/models/`
 4. **Deploy**: Run inference API independently from training code
 5. **Integrate**: Frontend connects to inference API for predictions
 
@@ -186,6 +186,7 @@ For complete configuration examples and advanced tuning, see [IMAGE_SIZE_GUIDE.m
 - **Analysis history** tracking
 - **Responsive web interface**
 - **Grad-CAM visualizations** for model interpretability
+- **Trust Layer** for calibrated confidence and uncertainty assessment (safe abstention)
 
 ## Documentation
 

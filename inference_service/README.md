@@ -10,6 +10,7 @@ Standalone FastAPI inference API for Dermalyze. This service is intentionally de
 - Checkpoint loading: local `.pt` checkpoint
 - Supported model architectures in this package: ConvNeXt-Tiny and torchvision EfficientNet variants (`efficientnet_b0`-`efficientnet_b7`, `efficientnetv2_s`, `efficientnetv2_m`, `efficientnetv2_l`)
 - Output classes: 7 lesion classes (`akiec`, `bcc`, `bkl`, `df`, `mel`, `nv`, `vasc`)
+- Trust Layer: built-in uncertainty assessment and calibrated confidence scoring for safe abstention.
 
 Metadata-fusion checkpoints are supported. If a checkpoint contains `metadata_encoder_state`, the predictor automatically instantiates the multi-input fusion model.
 
@@ -78,7 +79,17 @@ Response:
   "classes": [
     { "id": "mel", "name": "Melanoma", "score": 87.42 },
     { "id": "bcc", "name": "Basal Cell Carcinoma", "score": 9.31 }
-  ]
+  ],
+  "prediction": "mel",
+  "calibrated_confidence": 0.8742,
+  "uncertainty": {
+    "score": 0.23,
+    "normalized_entropy": 0.35,
+    "top2_margin": 0.7811,
+    "variation_ratio": 0.1258
+  },
+  "quality_flags": [],
+  "recommendation": "classify"
 }
 ```
 
@@ -98,6 +109,7 @@ Core inference:
 - `MODEL_BACKEND` (optional; only `checkpoint` is supported, default: `checkpoint`)
 - `MODEL_CHECKPOINT` (optional; explicit checkpoint path)
 - `MODEL_IMAGE_SIZE` (default: `300`)
+- `TRUST_CONFIG_PATH` (optional; path to Trust Layer configuration JSON, default: `models/trust_config.json`)
 - `USE_TTA` (`true|false`, default: `false`)
 - `TTA_MODE` (`light|medium|full`, default: `medium`)
 - `TTA_AGGREGATION` (`mean|geometric_mean|max`, default: `geometric_mean`)

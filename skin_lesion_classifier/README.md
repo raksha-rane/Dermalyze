@@ -216,6 +216,21 @@ Evaluation output directory (default: `evaluation_results`) includes:
 - `roc_curves.png`
 - `per_class_metrics.png`
 - `calibration_curve.png`
+- `trust_config.json` (if `--export-trust-config` is used)
+
+### Trust Layer Calibration
+
+Export a calibrated trust layer configuration for safe abstention during inference:
+
+```bash
+python src/evaluate.py \
+  --checkpoint outputs/run_xxx/checkpoint_best.pt \
+  --test-csv outputs/run_xxx/test_split.csv \
+  --images-dir data/HAM10000_Training/images \
+  --export-trust-config
+```
+
+You can pass the generated `trust_config.json` to the inference service via the `TRUST_CONFIG_PATH` environment variable.
 
 Note: `evaluate.py` supports unlabeled rows (for example `label=unknown`). Those rows are kept in `predictions.csv`, while aggregate metrics/plots are computed only from labeled rows.
 
