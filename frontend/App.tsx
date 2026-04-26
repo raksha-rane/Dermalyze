@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, lazy, Suspense } from 
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { SpeedInsights } from '@vercel/speed-insights/react';
 import { supabase } from './lib/supabase';
-import type { ClassResult, AnalysisHistoryItem, InferenceMetadata, TrustResult } from './lib/types';
+import type { ClassResult, AnalysisHistoryItem, InferenceMetadata, TrustResult, BatchItemResult } from './lib/types';
 import ErrorBoundary from './components/ErrorBoundary';
 import AppLayout from './components/AppLayout';
 
@@ -25,6 +25,8 @@ const HelpScreen = lazy(() => import('./components/HelpScreen'));
 const LogoutConfirmScreen = lazy(() => import('./components/LogoutConfirmScreen'));
 const ProfileScreen = lazy(() => import('./components/ProfileScreen'));
 const EmailVerificationScreen = lazy(() => import('./components/EmailVerificationScreen'));
+const BatchProcessingScreen = lazy(() => import('./components/BatchProcessingScreen'));
+const BatchResultsScreen = lazy(() => import('./components/BatchResultsScreen'));
 
 // ── Route paths ───────────────────────────────────────────────────────────────
 export const ROUTES = {
@@ -44,6 +46,8 @@ export const ROUTES = {
   about: '/about',
   help: '/help',
   profile: '/profile',
+  batchProcessing: '/batch-processing',
+  batchResults: '/batch-results',
 } as const;
 
 const PUBLIC_ROUTES: string[] = [
@@ -114,6 +118,10 @@ const App: React.FC = () => {
   const [selectedHistoryItem, setSelectedHistoryItem] = useState<AnalysisHistoryItem | null>(null);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [prevPath, setPrevPath] = useState<string | null>(null);
+  // ── Batch state ───────────────────────────────────────────────────────────
+  const [batchImages, setBatchImages] = useState<string[]>([]);
+  const [batchResults, setBatchResults] = useState<BatchItemResult[]>([]);
+  const [, setBatchDetailItem] = useState<BatchItemResult | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [signupEmail, setSignupEmail] = useState<string>(
     () => sessionStorage.getItem(SIGNUP_EMAIL_KEY) ?? ''
@@ -228,7 +236,33 @@ const App: React.FC = () => {
     setAnalysisCaseId(null);
     setAnalysisError(null);
     setAnalysisRetryable(false);
+    setBatchImages([]);
+    setBatchResults([]);
+    setBatchDetailItem(null);
     navigate(ROUTES.upload);
+  };
+
+  const handleRunBatchClassification = (images: string[]) => {
+    setBatchImages(images);
+    setBatchResults([]);
+    navigate(ROUTES.batchProcessing);
+  };
+
+  const handleBatchComplete = (results: BatchItemResult[]) => {
+    setBatchResults(results);
+    navigate(ROUTES.batchResults);
+  };
+
+  const handleViewBatchDetail = (item: BatchItemResult) => {
+    if (!item.classes || !item.trustResult) return;
+    setBatchDetailItem(item);
+    setSelectedImage(item.image);
+    setAnalysisResults(item.classes);
+    setAnalysisGradcam(item.gradcamImage ?? null);
+    setAnalysisTrustResult(item.trustResult);
+    setAnalysisCaseId(item.caseId);
+    setInferenceMetadata(item.metadata);
+    navigate(ROUTES.results);
   };
 
   const handleViewHistoryDetail = (item: AnalysisHistoryItem) => {
@@ -352,8 +386,46 @@ const App: React.FC = () => {
                       setAnalysisError(msg ?? null);
                       navigate(ROUTES.error);
                     }}
+                    onRunBatchClassification={handleRunBatchClassification}
                   />
                 </AppLayout>
+              }
+            />
+            <Route
+              path={ROUTES.batchProcessing}
+              element={
+                batchImages.length === 0 ? (
+                  <Navigate to={ROUTES.upload} replace />
+                ) : (
+                  <AppLayout onLogout={handleRequestLogout}>
+                    <BatchProcessingScreen
+                      images={batchImages}
+                      metadata={inferenceMetadata}
+                      onComplete={handleBatchComplete}
+                      onError={(msg) => {
+                        setAnalysisError(msg ?? null);
+                        navigate(ROUTES.error);
+                      }}
+                    />
+                  </AppLayout>
+                )
+              }
+            />
+            <Route
+              path={ROUTES.batchResults}
+              element={
+                batchResults.length === 0 ? (
+                  <Navigate to={ROUTES.upload} replace />
+                ) : (
+                  <AppLayout onLogout={handleRequestLogout}>
+                    <BatchResultsScreen
+                      results={batchResults}
+                      onViewDetail={handleViewBatchDetail}
+                      onAnalyzeAnother={resetAnalysis}
+                      onNavigateToHistory={() => navigate(ROUTES.history)}
+                    />
+                  </AppLayout>
+                )
               }
             />
             <Route

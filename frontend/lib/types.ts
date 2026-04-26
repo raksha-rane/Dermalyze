@@ -25,6 +25,18 @@ export interface TrustResult {
   recommendation: 'classify' | 'review_required' | 'reject';
 }
 
+export interface BatchItemResult {
+  imageIndex: number;
+  image: string;          // base64 data URL (compressed)
+  caseId: string;
+  status: 'pending' | 'processing' | 'success' | 'error' | 'rejected';
+  classes?: ClassResult[];
+  gradcamImage?: string;
+  trustResult?: TrustResult;
+  errorMessage?: string;
+  metadata: InferenceMetadata;
+}
+
 export interface AnalysisHistoryItem {
   id: string;
   createdAt: string; // ISO timestamp for calculations
