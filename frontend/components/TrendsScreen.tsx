@@ -42,14 +42,13 @@ const TrendsScreen: React.FC<TrendsScreenProps> = ({ onBack }) => {
             'id, created_at, predicted_class_id, predicted_class_name, confidence, image_url, all_scores, notes, trust_recommendation'
           )
           .eq('user_id', user.id)
+          .or('trust_recommendation.neq.reject,trust_recommendation.is.null')
           .order('created_at', { ascending: false });
 
         if (fetchError) throw fetchError;
 
         // Map to AnalysisHistoryItem format
-        const items: AnalysisHistoryItem[] = (data || [])
-          .filter((row) => row.trust_recommendation !== 'reject')
-          .map((row) => ({
+        const items: AnalysisHistoryItem[] = (data || []).map((row) => ({
           id: row.id,
           createdAt: row.created_at, // Store raw ISO timestamp
           date: new Date(row.created_at).toLocaleDateString('en-US', {

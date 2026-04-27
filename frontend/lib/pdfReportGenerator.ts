@@ -1,6 +1,5 @@
 import { jsPDF } from 'jspdf';
-import type { ClassResult } from './types';
-import type { InferenceMetadata } from './types';
+import type { ClassResult, InferenceMetadata, TrustResult } from './types';
 import type { ClassInfo, RiskSeverity } from './classInfo';
 import { getRiskSeverity } from './classInfo';
 
@@ -17,7 +16,7 @@ export interface ReportData {
   notes?: string;
   imageDataUrl?: string;
   metadata?: InferenceMetadata | null; // Patient metadata captured at analysis time
-  trustRecommendation?: string;
+  trustRecommendation?: TrustResult['recommendation'];
   trustUncertaintyScore?: number;
   trustQualityFlags?: string[];
 }
@@ -508,16 +507,6 @@ export async function generateDermatologyReport(data: ReportData): Promise<void>
       pdf.line(margin, y, margin + 40, y);
       y += 4;
 
-      const qBoxY = y;
-      setFillColor(pdf, [239, 246, 255]); // blue-50
-      setDrawColor(pdf, [191, 219, 254]); // blue-200
-      pdf.setLineWidth(0.3);
-      pdf.rect(margin, qBoxY, contentWidth, 12, 'FD');
-
-      pdf.setFont('helvetica', 'normal');
-      pdf.setFontSize(8);
-      setColor(pdf, [30, 64, 175]); // blue-800
-
       const flagTexts = flags.map(f => {
         if (f === 'image_too_blurry') return 'Image appears blurry.';
         if (f === 'image_underexposed') return 'Image appears underexposed (too dark).';
@@ -525,9 +514,22 @@ export async function generateDermatologyReport(data: ReportData): Promise<void>
         return f;
       }).join(' ');
 
-      pdf.text(flagTexts, margin + 4, qBoxY + 7);
+      const splitTexts = pdf.splitTextToSize(flagTexts, contentWidth - 8);
+      const qBoxHeight = 6 + splitTexts.length * 4;
 
-      y = qBoxY + 16;
+      const qBoxY = y;
+      setFillColor(pdf, [239, 246, 255]); // blue-50
+      setDrawColor(pdf, [191, 219, 254]); // blue-200
+      pdf.setLineWidth(0.3);
+      pdf.rect(margin, qBoxY, contentWidth, qBoxHeight, 'FD');
+
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(8);
+      setColor(pdf, [30, 64, 175]); // blue-800
+
+      pdf.text(splitTexts, margin + 4, qBoxY + 6);
+
+      y = qBoxY + qBoxHeight + 4;
     }
   }
 

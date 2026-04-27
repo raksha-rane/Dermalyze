@@ -69,13 +69,15 @@ const BatchProcessingScreen: React.FC<BatchProcessingScreenProps> = ({
             gradcamImage: result.gradcamImage,
             trustResult: result.trustResult,
           };
-        } catch (err) {
-          const msg =
-            err instanceof ApiError
-              ? err.message
-              : err instanceof Error
+        } catch (err: unknown) {
+          let msg =
+            err instanceof Error
               ? err.message
               : 'Classification failed.';
+              
+          if (err instanceof ApiError && err.status === 500 && msg.includes('500')) {
+            msg = 'The image could not be processed due to a server error. The image may be corrupted or in an unsupported format.';
+          }
           results[i] = { ...results[i], status: 'error', errorMessage: msg };
         }
 

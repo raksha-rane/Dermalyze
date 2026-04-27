@@ -44,7 +44,7 @@ const BatchResultsScreen: React.FC<BatchResultsScreenProps> = ({
   const savedRef = useRef(false);
   const [saveSummary, setSaveSummary] = useState<'saving' | 'done' | 'partial' | 'failed'>('saving');
 
-  const successful = results.filter((r) => r.status === 'success' || r.status === 'rejected');
+  const classified = results.filter((r) => r.status === 'success');
   const errors = results.filter((r) => r.status === 'error');
   const rejected = results.filter((r) => r.status === 'rejected');
   const needsReview = results.filter(
@@ -71,6 +71,7 @@ const BatchResultsScreen: React.FC<BatchResultsScreenProps> = ({
 
         try {
           let image_url: string | null = null;
+          let gradcam_image_url: string | null = null;
 
           // Upload image
           const optimizedBlob = await optimizeImage(item.image, {
@@ -86,6 +87,24 @@ const BatchResultsScreen: React.FC<BatchResultsScreenProps> = ({
             .upload(path, encryptedBlob, { contentType: 'application/octet-stream' });
           if (!uploadErr) image_url = path;
 
+          if (item.gradcamImage) {
+            try {
+              const optimizedGradcamBlob = await optimizeImage(item.gradcamImage, {
+                maxDimension: 1024,
+                quality: 0.75,
+                format: 'image/webp',
+              });
+              const encryptedGradcamBlob = await encryptImage(optimizedGradcamBlob, user.id);
+              const gradcamPath = `${user.id}/${item.caseId}_gradcam.${ext}`;
+              const { error: uploadGradcamErr } = await supabase.storage
+                .from('analysis-images')
+                .upload(gradcamPath, encryptedGradcamBlob, { contentType: 'application/octet-stream' });
+              if (!uploadGradcamErr) gradcam_image_url = gradcamPath;
+            } catch (e) {
+              console.error('Failed to upload Grad-CAM image:', e);
+            }
+          }
+
           const metadataPayload = {
             age_approx: item.metadata.ageApprox ?? null,
             sex: item.metadata.sex ?? null,
@@ -97,7 +116,7 @@ const BatchResultsScreen: React.FC<BatchResultsScreenProps> = ({
             id: item.caseId,
             user_id: user.id,
             image_url,
-            gradcam_image_url: null,
+            gradcam_image_url,
             predicted_class_id: pred.id,
             predicted_class_name: pred.name,
             confidence: pred.score,
@@ -172,7 +191,7 @@ const BatchResultsScreen: React.FC<BatchResultsScreenProps> = ({
           </div>
           <div className="bg-white rounded-2xl border border-slate-300 shadow-sm p-4">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Classified</p>
-            <p className="text-2xl font-bold text-teal-600">{successful.length}</p>
+            <p className="text-2xl font-bold text-teal-600">{classified.length}</p>
           </div>
           <div className={['rounded-2xl border shadow-sm p-4', needsReview.length > 0 ? 'bg-amber-50 border-amber-300' : 'bg-white border-slate-200'].join(' ')}>
             <p className="text-[10px] font-bold text-amber-500 uppercase tracking-widest mb-1">Needs Review</p>

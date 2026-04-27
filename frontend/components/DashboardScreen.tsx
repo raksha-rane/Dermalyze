@@ -59,13 +59,12 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({
           .from('analyses')
           .select('id, created_at, predicted_class_id, predicted_class_name, confidence, trust_recommendation')
           .eq('user_id', user.id)
+          .or('trust_recommendation.neq.reject,trust_recommendation.is.null')
           .order('created_at', { ascending: false });
 
         if (error) throw error;
 
-        const mappedData = (data ?? [])
-          .filter((row) => row.trust_recommendation !== 'reject')
-          .map((row) => ({
+        const mappedData = (data ?? []).map((row) => ({
           id: row.id,
           createdAt: row.created_at,
           date: '',

@@ -103,8 +103,8 @@ create or replace function get_dashboard_stats()
 returns json language sql stable security definer
 set search_path = public, pg_temp as $$
   select json_build_object(
-    'total',          count(*),
-    'this_month',     count(*) filter (where created_at >= date_trunc('month', now())),
+    'total',          count(*) filter (where trust_recommendation is distinct from 'reject'),
+    'this_month',     count(*) filter (where created_at >= date_trunc('month', now()) and trust_recommendation is distinct from 'reject'),
     'avg_confidence', round(avg(confidence) filter (where trust_recommendation is distinct from 'reject')::numeric, 1),
     'needs_review',   count(*) filter (where trust_recommendation in ('review_required', 'reject') or (trust_recommendation is null and predicted_class_id in ('mel','bcc','akiec'))),
     'class_counts', (
