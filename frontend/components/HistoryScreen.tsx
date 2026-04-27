@@ -3,7 +3,7 @@ import Button from './ui/Button';
 import { supabase } from '../lib/supabase';
 import { decryptImage, blobToDataUrl } from '../lib/imageEncryption';
 import { useDataCache } from '../lib/dataCache';
-import type { AnalysisHistoryItem } from '../lib/types';
+import type { AnalysisHistoryItem, TrustResult } from '../lib/types';
 
 // Re-export so HistoryDetailScreen can still import from here
 export type { AnalysisHistoryItem };
@@ -219,7 +219,7 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ onBack, onViewDetails }) 
 
     const allPaths = [...imagePaths, ...gradcamPaths];
 
-    let imageUrlMap: Record<string, string> = {};
+    const imageUrlMap: Record<string, string> = {};
     const failedPaths = new Set<string>();
     if (allPaths.length > 0) {
       const { data: signed } = await supabase.storage
@@ -297,7 +297,7 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ onBack, onViewDetails }) 
           (rawUrl && !rawUrl.startsWith('http') && failedPaths.has(rawUrl)) ||
           (rawGradcamUrl && !rawGradcamUrl.startsWith('http') && failedPaths.has(rawGradcamUrl)) ||
           false,
-        trustRecommendation: (row.trust_recommendation as string | null) ?? undefined,
+        trustRecommendation: (row.trust_recommendation as TrustResult['recommendation'] | null) ?? undefined,
         trustUncertaintyScore: (row.trust_uncertainty_score as number | null) ?? undefined,
         trustQualityFlags: (row.trust_quality_flags as string[] | null) ?? undefined,
         metadata: (() => {

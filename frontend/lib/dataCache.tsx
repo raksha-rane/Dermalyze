@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { supabase } from './supabase';
 import { decryptImage, blobToDataUrl } from './imageEncryption';
-import type { AnalysisHistoryItem, DashStats } from './types';
+import type { AnalysisHistoryItem, DashStats, TrustResult } from './types';
 import { SHORT_CLASS_NAMES } from './types';
 
 // Cache TTL in milliseconds (5 minutes)
@@ -185,7 +185,8 @@ export const DataCacheProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                 year: 'numeric',
               }),
               imageUrl: resolvedImageUrl,
-              trustRecommendation: (last.trust_recommendation as string | null) ?? undefined,
+              trustRecommendation:
+                (last.trust_recommendation as TrustResult['recommendation'] | null) ?? undefined,
             }
           : null;
 
@@ -255,7 +256,7 @@ export const DataCacheProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
         const allPaths = [...imagePaths, ...gradcamPaths];
 
-        let imageUrlMap: Record<string, string> = {};
+        const imageUrlMap: Record<string, string> = {};
         const failedPaths = new Set<string>();
         if (allPaths.length > 0) {
           const { data: signed } = await supabase.storage
@@ -326,7 +327,8 @@ export const DataCacheProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               (rawUrl && !rawUrl.startsWith('http') && failedPaths.has(rawUrl)) ||
               (rawGradcamUrl && !rawGradcamUrl.startsWith('http') && failedPaths.has(rawGradcamUrl)) ||
               false,
-            trustRecommendation: (row.trust_recommendation as string | null) ?? undefined,
+            trustRecommendation:
+              (row.trust_recommendation as TrustResult['recommendation'] | null) ?? undefined,
             trustUncertaintyScore: (row.trust_uncertainty_score as number | null) ?? undefined,
             trustQualityFlags: (row.trust_quality_flags as string[] | null) ?? undefined,
             metadata: (() => {
