@@ -99,6 +99,7 @@ USE_TTA = os.environ.get("USE_TTA", "false").lower() == "true"
 TTA_MODE = os.environ.get("TTA_MODE", "medium")
 TTA_AGGREGATION = os.environ.get("TTA_AGGREGATION", "geometric_mean")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite").strip()
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "").strip()
 SUPABASE_JWT_SECRET = os.environ.get("SUPABASE_JWT_SECRET", "").strip()
@@ -422,7 +423,7 @@ async def _validate_dermatoscopic(
         img = types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
 
         response = client.models.generate_content(
-            model="gemini-3.1-flash-lite-preview",
+            model=GEMINI_MODEL,
             contents=[
                 img,
                 (
