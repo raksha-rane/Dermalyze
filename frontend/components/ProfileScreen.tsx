@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Input from './ui/Input';
 import Button from './ui/Button';
 import { supabase } from '../lib/supabase';
+import { UserIcon } from '@heroicons/react/24/outline';
 
 interface ProfileScreenProps {
   onBack: () => void;
@@ -219,228 +220,224 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({ onBack }) => {
 
   return (
     <div className="flex-1 flex flex-col bg-slate-50 text-slate-900 min-h-screen">
-      {/* ── Main ── */}
-      <main className="max-w-2xl mx-auto w-full px-4 sm:px-6 py-8 flex flex-col gap-8 pb-16">
-        {/* Back + title */}
-        <div className="flex items-center gap-3">
-          <button
-            onClick={onBack}
-            className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400 hover:text-slate-600"
-            aria-label="Back to Dashboard"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15 19l-7-7 7-7"
-              />
-            </svg>
-          </button>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">My Profile</h1>
-        </div>
-
-        {/* ── Section 1: Profile Info ── */}
-        <section className="bg-white rounded-3xl border border-slate-300 p-6 sm:p-8 shadow-sm">
-          <div className="flex items-center gap-4 mb-6">
-            {/* Initials avatar */}
-            <div className="w-16 h-16 rounded-full bg-teal-100 flex items-center justify-center text-teal-700 font-bold text-xl shrink-0 select-none">
-              {initials}
-            </div>
+      {/* ── Header ── */}
+      <section className="bg-gradient-to-br from-teal-600 to-teal-700 px-6 py-8 sm:py-10 shrink-0">
+        <div className="max-w-5xl mx-auto">
+          <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-bold text-slate-900">{fullName || 'Unnamed User'}</h2>
-              <p className="text-sm text-slate-500">{email}</p>
+              <span className="inline-flex items-center gap-2 px-3 py-1.5 bg-white/20 backdrop-blur-sm text-white text-[11px] font-bold uppercase tracking-wider rounded-lg border border-white/30 mb-3">
+                <UserIcon className="w-4 h-4" />
+                Account Settings
+              </span>
+              <h1 className="text-3xl font-bold text-white tracking-tight mb-2">
+                My Profile
+              </h1>
+              <p className="text-teal-50 text-sm leading-relaxed">
+                Manage your identity, security credentials, and data preferences.
+              </p>
+            </div>
+            <button
+              onClick={onBack}
+              className="hidden sm:inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white border-2 border-white/30 hover:bg-white/10 rounded-xl transition-colors shrink-0"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+              Back to Dashboard
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Main ── */}
+      <main className="flex-1 flex flex-col min-h-0">
+        <section className="bg-slate-100 px-6 py-8 flex-1 flex flex-col justify-center">
+          <div className="max-w-5xl w-full mx-auto grid lg:grid-cols-2 gap-6 items-stretch">
+            
+            {/* ── Left Column: Password Management ── */}
+            <div className="flex flex-col">
+              <article className="bg-white rounded-3xl border-2 border-slate-300 p-6 sm:p-8 shadow-sm flex-1 flex flex-col">
+                <div className="mb-8">
+                  <h3 className="text-xl font-bold text-slate-900">Password Management</h3>
+                  <p className="text-sm text-slate-500 mt-2">
+                    Update your password to keep your account secure. Must be at least 12 characters.
+                  </p>
+                </div>
+
+                <form onSubmit={handleChangePassword} className="space-y-5 flex-1 flex flex-col">
+                  <FeedbackBanner msg={passwordMsg} />
+                  <Input
+                    label="Current Password"
+                    type="password"
+                    placeholder="••••••••"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    required
+                  />
+                  <Input
+                    label="New Password"
+                    type="password"
+                    placeholder="••••••••"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    required
+                  />
+                  <Input
+                    label="Confirm Password"
+                    type="password"
+                    placeholder="••••••••"
+                    value={confirmNewPassword}
+                    onChange={(e) => setConfirmNewPassword(e.target.value)}
+                    required
+                  />
+                  
+                  {/* Pushes the button to the bottom if there's extra space */}
+                  <div className="mt-auto pt-6 flex justify-end">
+                    <div className="w-full sm:w-auto">
+                      <Button type="submit" disabled={passwordLoading}>
+                        {passwordLoading ? (
+                          <span className="flex items-center justify-center gap-2">
+                            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                            </svg>
+                            Updating…
+                          </span>
+                        ) : (
+                          'Update Password'
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                </form>
+              </article>
+            </div>
+
+            {/* ── Right Column: Identity & Danger Zone ── */}
+            <div className="flex flex-col gap-6">
+              
+              {/* ── Personal Information ── */}
+              <article className="bg-white rounded-3xl border-2 border-slate-300 p-6 sm:p-8 shadow-sm">
+                <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 mb-6">
+                  {/* Avatar */}
+                  <div className="w-20 h-20 shrink-0 rounded-2xl bg-teal-100 border-4 border-white shadow-sm flex items-center justify-center text-teal-700 font-bold text-2xl select-none">
+                    {initials}
+                  </div>
+                  {/* Info */}
+                  <div className="text-center sm:text-left min-w-0 flex-1">
+                    <h2 className="text-xl font-bold text-slate-900 truncate">{fullName || 'Unnamed User'}</h2>
+                    <p className="text-sm text-slate-500 truncate mb-2">{email}</p>
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-400 uppercase tracking-widest">
+                      Primary Email
+                    </span>
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-200 pt-6">
+                  <form onSubmit={handleSaveProfile} className="space-y-4">
+                    <FeedbackBanner msg={profileMsg} />
+                    <div className="flex flex-col sm:flex-row items-end gap-4">
+                      <div className="flex-1 w-full">
+                        <Input
+                          label="Full Name"
+                          type="text"
+                          placeholder="Enter your full name"
+                          value={fullName}
+                          onChange={(e) => setFullName(e.target.value)}
+                        />
+                      </div>
+                      <div className="w-full sm:w-auto pb-1">
+                        <Button type="submit" disabled={saving}>
+                          {saving ? (
+                            <span className="flex items-center justify-center gap-2">
+                              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                              </svg>
+                              Saving…
+                            </span>
+                          ) : (
+                            'Save'
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  </form>
+                </div>
+              </article>
+
+              {/* ── Account Deletion ── */}
+              <article className="bg-rose-50 rounded-3xl border-2 border-rose-300 p-6 sm:p-8 shadow-sm flex-1 flex flex-col">
+                <div className="mb-5">
+                  <h3 className="text-xl font-bold text-red-800">Account Deletion</h3>
+                  <p className="text-sm text-red-700/80 mt-2 leading-relaxed">
+                    Permanently delete your account. All of your analysis records and uploaded images will be permanently erased. This cannot be undone.
+                  </p>
+                </div>
+
+                <div className="mt-auto pt-2">
+                  {!showDeleteConfirm ? (
+                    <button
+                      onClick={() => setShowDeleteConfirm(true)}
+                      className="px-6 py-2.5 rounded-xl text-sm font-semibold border-2 border-red-200 bg-white text-red-700 hover:bg-red-50 transition-colors shadow-sm"
+                    >
+                      Delete Account
+                    </button>
+                  ) : (
+                    <div className="bg-white p-5 rounded-2xl border border-rose-200 shadow-sm">
+                      <FeedbackBanner msg={deleteMsg} />
+                      <p className="text-sm text-red-700 mb-3 font-semibold">
+                        Permanent action. Type <span className="font-mono font-bold px-1.5 py-0.5 bg-rose-100 rounded text-red-800">DELETE</span> to confirm.
+                      </p>
+                      <div className="flex flex-col sm:flex-row gap-3">
+                        <input
+                          type="text"
+                          value={deleteConfirmText}
+                          onChange={(e) => setDeleteConfirmText(e.target.value)}
+                          placeholder="Type DELETE"
+                          className="flex-1 px-4 py-2.5 rounded-lg border border-rose-200 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all text-slate-800 placeholder:text-slate-400 text-sm font-mono"
+                          autoComplete="off"
+                        />
+                        <button
+                          onClick={handleDeleteAccount}
+                          disabled={deleteConfirmText !== 'DELETE' || deleteLoading}
+                          className="sm:w-32 py-2.5 px-4 rounded-lg font-semibold text-sm bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm shrink-0"
+                        >
+                          {deleteLoading ? 'Deleting…' : 'Confirm'}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowDeleteConfirm(false);
+                            setDeleteConfirmText('');
+                            setDeleteMsg(null);
+                          }}
+                          disabled={deleteLoading}
+                          className="sm:w-28 py-2.5 px-4 rounded-lg font-semibold text-sm border-2 border-slate-200 bg-white text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-50 shadow-sm shrink-0"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </article>
+
             </div>
           </div>
-
-          <form onSubmit={handleSaveProfile} className="space-y-1">
-            <FeedbackBanner msg={profileMsg} />
-            <Input
-              label="Full Name"
-              type="text"
-              placeholder="Enter your full name"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-            />
-            <Input label="Email" type="email" value={email} disabled />
-            <p className="text-[11px] text-slate-400 -mt-2 mb-4 px-0.5">
-              Email cannot be changed from this screen for security reasons.
-            </p>
-            <div className="pt-2">
-              <Button type="submit" disabled={saving}>
-                {saving ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                      />
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                      />
-                    </svg>
-                    Saving…
-                  </span>
-                ) : (
-                  'Save Profile'
-                )}
-              </Button>
-            </div>
-          </form>
-        </section>
-
-        {/* ── Section 2: Change Password ── */}
-        <section className="bg-white rounded-3xl border border-slate-300 p-6 sm:p-8 shadow-sm">
-          <h2 className="text-lg font-bold text-slate-900 mb-1">Change Password</h2>
-          <p className="text-sm text-slate-500 mb-6">
-            Update your account password. New password must be at least 12 characters.
-          </p>
-
-          <form onSubmit={handleChangePassword} className="space-y-1">
-            <FeedbackBanner msg={passwordMsg} />
-            <Input
-              label="Current Password"
-              type="password"
-              placeholder="••••••••"
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-              required
-            />
-            <Input
-              label="New Password"
-              type="password"
-              placeholder="••••••••"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              required
-            />
-            <Input
-              label="Confirm New Password"
-              type="password"
-              placeholder="••••••••"
-              value={confirmNewPassword}
-              onChange={(e) => setConfirmNewPassword(e.target.value)}
-              required
-            />
-            <div className="pt-2">
-              <Button type="submit" disabled={passwordLoading}>
-                {passwordLoading ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                      />
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                      />
-                    </svg>
-                    Changing…
-                  </span>
-                ) : (
-                  'Change Password'
-                )}
-              </Button>
-            </div>
-          </form>
-        </section>
-
-        {/* ── Section 3: Delete Account ── */}
-        <section className="bg-white rounded-3xl border border-red-300 p-6 sm:p-8 shadow-sm">
-          <h2 className="text-lg font-bold text-red-700 mb-1">Delete Account</h2>
-          <p className="text-sm text-slate-500 mb-4 leading-relaxed">
-            Permanently delete your account and all associated analysis data. This action{' '}
-            <strong className="text-red-600">cannot be undone</strong>.
-          </p>
-
-          {!showDeleteConfirm ? (
-            <button
-              onClick={() => setShowDeleteConfirm(true)}
-              className="px-5 py-2.5 rounded-full text-sm font-medium border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
-            >
-              Delete My Account
-            </button>
-          ) : (
-            <div className="space-y-4">
-              <FeedbackBanner msg={deleteMsg} />
-              <div className="p-4 bg-red-50 border border-red-200 rounded-xl">
-                <p className="text-sm text-red-700 mb-3 font-medium">
-                  Type <span className="font-mono font-bold">DELETE</span> to confirm:
-                </p>
-                <input
-                  type="text"
-                  value={deleteConfirmText}
-                  onChange={(e) => setDeleteConfirmText(e.target.value)}
-                  placeholder="Type DELETE"
-                  className="w-full px-4 py-2.5 rounded-lg border border-red-200 bg-white focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all text-slate-800 placeholder:text-slate-400 text-sm"
-                  autoComplete="off"
-                />
-              </div>
-              <div className="flex gap-3">
-                <button
-                  onClick={handleDeleteAccount}
-                  disabled={deleteConfirmText !== 'DELETE' || deleteLoading}
-                  className="flex-1 py-2.5 px-4 rounded-full font-medium text-sm bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {deleteLoading ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                        <circle
-                          className="opacity-25"
-                          cx="12"
-                          cy="12"
-                          r="10"
-                          stroke="currentColor"
-                          strokeWidth="4"
-                        />
-                        <path
-                          className="opacity-75"
-                          fill="currentColor"
-                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                        />
-                      </svg>
-                      Deleting…
-                    </span>
-                  ) : (
-                    'Permanently Delete'
-                  )}
-                </button>
-                <button
-                  onClick={() => {
-                    setShowDeleteConfirm(false);
-                    setDeleteConfirmText('');
-                    setDeleteMsg(null);
-                  }}
-                  disabled={deleteLoading}
-                  className="flex-1 py-2.5 px-4 rounded-full font-medium text-sm border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
         </section>
       </main>
 
-      <footer className="py-8 text-center bg-slate-50 mt-auto">
-        <p className="text-[11px] font-medium text-slate-400 uppercase tracking-widest leading-relaxed px-6">
-          Clinical Support & Diagnostic Aid Suite
-        </p>
+      {/* ── Footer ── */}
+      <footer className="bg-white border-t-2 border-slate-300 py-6 px-6 shrink-0">
+        <div className="max-w-6xl mx-auto text-center">
+          <p className="text-[10px] sm:text-xs text-slate-400 uppercase tracking-widest font-bold">
+            Clinical Support & Diagnostic Aid Suite
+          </p>
+        </div>
       </footer>
     </div>
   );
 };
 
 export default ProfileScreen;
+
