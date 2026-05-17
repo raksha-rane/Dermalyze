@@ -50,19 +50,14 @@ const ProcessingScreen: React.FC<ProcessingScreenProps> = ({
         if (err instanceof ApiError) {
           if (err.status === 429) {
             msg = 'Too Many Requests. You have exceeded the upload limit. Please wait 60 seconds before trying again.';
-            retryable = true;
+            retryable = false;
           } else if (err.status === 422) {
             // Usually the LLM rejection fallback
-            if (msg.includes('422')) {
-              msg = 'Unprocessable Image. The uploaded file does not appear to contain visible dermatoscopic structures.';
-            }
+            msg = 'Unprocessable Image. The uploaded file does not appear to contain visible dermatoscopic structures.';
             retryable = false;
           } else if (err.status === 500 && msg.includes('500')) {
             msg = 'The image could not be processed due to a server error. The image may be corrupted or in an unsupported format.';
             retryable = false;
-          } else if (err.status === 408 || err.status === 503) {
-            msg = 'The cloud server is currently experiencing heavy load. Please try again later.';
-            retryable = true;
           }
         } else if (err instanceof TypeError && err.message.includes('fetch')) {
           msg = 'Network error. Please check your internet connection and try again.';
